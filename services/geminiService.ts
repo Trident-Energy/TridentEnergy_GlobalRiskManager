@@ -1,6 +1,17 @@
 import { GoogleGenAI, Type } from "@google/genai";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+let ai: GoogleGenAI | null = null;
+
+try {
+  const apiKey = process.env.API_KEY;
+  if (apiKey) {
+    ai = new GoogleGenAI({ apiKey });
+  } else {
+    console.warn("Google GenAI API Key is missing. AI features will be disabled.");
+  }
+} catch (error) {
+  console.error("Failed to initialize Google GenAI client:", error);
+}
 
 export interface AiSuggestion {
   text: string;
@@ -8,6 +19,13 @@ export interface AiSuggestion {
 }
 
 export const generateMitigationAdvice = async (riskTitle: string, riskDescription: string): Promise<AiSuggestion> => {
+  if (!ai) {
+    return {
+      text: "AI service unavailable.",
+      feedback: "API Key is missing or invalid. Please check your configuration."
+    };
+  }
+
   try {
     const model = 'gemini-2.5-flash';
     const prompt = `
@@ -57,6 +75,13 @@ export const generateMitigationAdvice = async (riskTitle: string, riskDescriptio
 };
 
 export const improveRiskDescription = async (currentDescription: string, riskTitle: string): Promise<AiSuggestion> => {
+  if (!ai) {
+     return {
+      text: currentDescription,
+      feedback: "AI service unavailable (API Key missing)."
+    };
+  }
+
   try {
     const model = 'gemini-2.5-flash';
     const prompt = `
