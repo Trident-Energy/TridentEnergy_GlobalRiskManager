@@ -92,7 +92,7 @@ const RiskHeatMap: React.FC<Props> = ({
                       // Dim if map is active but this cell is not selected
                       const isDimmed = isMapActive && !isCellActive; 
                       // Also dim if another map (different type) is active
-                      const isOtherMapActive = activeFilter && activeFilter.type !== type;
+                      const isOtherMapActive = activeFilter ? activeFilter.type !== type : false;
 
                       return (
                         <button
