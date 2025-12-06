@@ -1,4 +1,5 @@
 
+
 import { Risk, Country, RiskCategory, RiskStatus, ControlRating, ActionPlan, Comment, User, EscalationLevel } from './types';
 
 // Country Config
@@ -16,30 +17,31 @@ export const GROUPS = [
 ];
 
 export const ESCALATION_LEVELS = [
-  EscalationLevel.FUNCTIONAL_L1,
-  EscalationLevel.COUNTRY_GM,
-  EscalationLevel.TEML_L1,
-  EscalationLevel.CEO
+  EscalationLevel.FUNCTIONAL_MANAGER,
+  EscalationLevel.TEML_FUNCTIONAL_REVIEW,
+  EscalationLevel.TEML_LEADERSHIP,
+  EscalationLevel.COUNTRY_MANAGER,
+  EscalationLevel.CORPORATE_RISK
 ];
 
-// Column Definitions for Visibility Toggling
+// Column Definitions for Visibility Toggling - Updated Order
 export const AVAILABLE_COLUMNS = [
   { key: 'warning', label: 'Warnings', mandatory: true },
   { key: 'role', label: 'My Role' },
-  { key: 'escalation', label: 'Escalation' },
-  { key: 'comments', label: 'Comments' },
-  { key: 'creationDate', label: 'Created Date' },
   { key: 'country', label: 'Country' },
   { key: 'register', label: 'Risk Register' },
-  { key: 'id', label: 'Risk ID', mandatory: true },
-  { key: 'trend', label: 'Trend' },
+  { key: 'id', label: 'Risk ID' }, // Hidden by default in App.tsx
   { key: 'title', label: 'Risk Title', mandatory: true },
-  { key: 'owner', label: 'Risk Owner' },
   { key: 'functionArea', label: 'Function/Area' },
+  { key: 'trend', label: 'Trend' },
   { key: 'inherentScore', label: 'Inherent Score' },
   { key: 'controlsRating', label: 'Controls Rating' },
   { key: 'residualScore', label: 'Residual Score' },
+  { key: 'owner', label: 'Risk Owner' },
   { key: 'status', label: 'Status' },
+  { key: 'comments', label: 'Comments' },
+  { key: 'escalation', label: 'Escalation' },
+  { key: 'creationDate', label: 'Created Date' },
   { key: 'lastReviewDate', label: 'Last Review Date' },
   { key: 'lastReviewer', label: 'Last Reviewer' },
 ];
@@ -130,14 +132,14 @@ export const calculateRiskScore = (impact: number, likelihood: number): number =
 /**
  * Calculates Risk Level based on the Heat Map Matrix.
  * Red (Significant): Score >= 15
- * Yellow (Moderate): Score >= 8 OR Impact == 5
- * Green (Low): Everything else
+ * Yellow (Moderate): Score >= 5
+ * Green (Low): Score < 5
  */
 export const getRiskLevel = (score: number, impact: number) => {
   if (score >= 15) return { label: 'Significant', color: 'bg-red-600 text-white', dot: 'bg-white' };
   
-  // Moderate covers the 8-12 range, PLUS (5,1) which is score 5 but impact 5
-  if (score >= 8 || impact === 5) return { label: 'Moderate', color: 'bg-yellow-400 text-slate-900', dot: 'bg-slate-900' };
+  // Moderate: Score >= 5. This ensures 1x5 (5) is Moderate, as well as 2x3 (6), etc.
+  if (score >= 5) return { label: 'Moderate', color: 'bg-yellow-400 text-slate-900', dot: 'bg-slate-900' };
   
   return { label: 'Low', color: 'bg-emerald-600 text-white', dot: 'bg-white' };
 };
@@ -165,13 +167,13 @@ export const getControlRatingColor = (rating: string) => {
 // Mock Data - Updated with New Roles
 export const MOCK_USERS: User[] = [
   { id: 'U1', name: 'Jane Doe', email: 'jane.doe@company.com', role: 'RMIA', groups: [] },
-  { id: 'U2', name: 'Carlos Silva', email: 'carlos.silva@company.com', role: 'L2Manager', groups: ['REG_BR'] },
-  { id: 'U3', name: 'Amara Ndiaye', email: 'amara.ndiaye@company.com', role: 'FunctionalManager', groups: ['REG_GQ'] },
-  { id: 'U4', name: 'Jean-Luc M', email: 'jean.luc@company.com', role: 'CountryGM', groups: ['REG_CG'] },
-  { id: 'U5', name: 'John Smith', email: 'john.smith@company.com', role: 'TEMLLeadership', groups: [] },
-  { id: 'U6', name: 'Sarah Jenkins', email: 'sarah.jenkins@company.com', role: 'CEO', groups: [] },
-  { id: 'U7', name: 'Francis Bidoul', email: 'francis.bidoul@company.com', role: 'L2Manager', groups: [] },
-  { id: 'U8', name: 'Elodie Saurat', email: 'elodie.saurat@company.com', role: 'L2Manager', groups: [] },
+  { id: 'U2', name: 'Carlos Silva', email: 'carlos.silva@company.com', role: 'Functional Manager', groups: ['REG_BR', EscalationLevel.FUNCTIONAL_MANAGER] },
+  { id: 'U3', name: 'Amara Ndiaye', email: 'amara.ndiaye@company.com', role: 'TEML Functional', groups: ['REG_GQ', EscalationLevel.TEML_FUNCTIONAL_REVIEW] },
+  { id: 'U4', name: 'Jean-Luc M', email: 'jean.luc@company.com', role: 'Country Manager', groups: ['REG_CG', EscalationLevel.COUNTRY_MANAGER] },
+  { id: 'U5', name: 'John Smith', email: 'john.smith@company.com', role: 'TEML Leadership Team', groups: [EscalationLevel.TEML_LEADERSHIP] },
+  { id: 'U6', name: 'Sarah Jenkins', email: 'sarah.jenkins@company.com', role: 'CEO', groups: [EscalationLevel.CORPORATE_RISK] },
+  { id: 'U7', name: 'Francis Bidoul', email: 'francis.bidoul@company.com', role: 'Manager', groups: [] }, // Changed to Manager
+  { id: 'U8', name: 'Elodie Saurat', email: 'elodie.saurat@company.com', role: 'Manager', groups: [] }, // Changed to Manager
 ];
 
 export const MOCK_RISKS: Risk[] = [
@@ -229,7 +231,7 @@ export const MOCK_RISKS: Risk[] = [
       { id: 'h3', date: '2023-11-05T09:15:00Z', user: 'Francis Bidoul', action: 'Risk Created', details: 'Initial risk creation' }
     ],
     escalations: [
-       { level: EscalationLevel.FUNCTIONAL_L1, userId: 'U1', userName: 'Jane Doe', date: '2024-03-25T09:00:00Z' }
+       { level: EscalationLevel.FUNCTIONAL_MANAGER, userId: 'U2', userName: 'Carlos Silva', date: '2024-03-25T09:00:00Z' }
     ]
   },
   {
@@ -301,7 +303,7 @@ export const MOCK_RISKS: Risk[] = [
     controlsText: 'Early negotiations started. Alternative sites identified.',
     controlsRating: ControlRating.GOOD,
     residualImpact: 3,
-    residualLikelihood: 2,
+    residualLikelihood: 2, // Score 6 -> Moderate
     status: RiskStatus.OPEN,
     lastReviewDate: '2024-02-20',
     lastReviewer: 'Jane Doe',
@@ -350,7 +352,7 @@ export const MOCK_RISKS: Risk[] = [
     controlsText: 'Fast-track clearance agent engaged. Inventory buffers increased.',
     controlsRating: ControlRating.GOOD,
     residualImpact: 3,
-    residualLikelihood: 2,
+    residualLikelihood: 2, // Score 6 -> Moderate
     status: RiskStatus.OPEN,
     lastReviewDate: '2024-03-18',
     lastReviewer: 'Jane Doe',
@@ -373,7 +375,7 @@ export const MOCK_RISKS: Risk[] = [
     controlsText: 'HR audit in progress. Recruitment drive planned.',
     controlsRating: ControlRating.FAIR,
     residualImpact: 3,
-    residualLikelihood: 3,
+    residualLikelihood: 3, // Score 9 -> Moderate
     status: RiskStatus.OPEN,
     lastReviewDate: '',
     lastReviewer: '',
@@ -398,7 +400,7 @@ export const MOCK_RISKS: Risk[] = [
     controlsText: 'External tax counsel engaged. Pre-audit internal review completed.',
     controlsRating: ControlRating.GOOD,
     residualImpact: 3,
-    residualLikelihood: 3,
+    residualLikelihood: 3, // Score 9 -> Moderate
     status: RiskStatus.OPEN,
     lastReviewDate: '2024-02-25',
     lastReviewer: 'Jane Doe',
@@ -421,7 +423,7 @@ export const MOCK_RISKS: Risk[] = [
     controlsText: 'Spare parts expedited. Specialist technician mobilized.',
     controlsRating: ControlRating.POOR,
     residualImpact: 3,
-    residualLikelihood: 3,
+    residualLikelihood: 3, // Score 9 -> Moderate
     status: RiskStatus.OPEN,
     lastReviewDate: '2024-03-12',
     lastReviewer: 'Jean-Luc M',
@@ -444,7 +446,7 @@ export const MOCK_RISKS: Risk[] = [
     controlsText: 'Meeting with Central Bank scheduled. Payment prioritization framework.',
     controlsRating: ControlRating.FAIR,
     residualImpact: 4,
-    residualLikelihood: 3,
+    residualLikelihood: 3, // Score 12 -> Moderate
     status: RiskStatus.OPEN,
     lastReviewDate: '',
     lastReviewer: '',
@@ -463,11 +465,11 @@ export const MOCK_RISKS: Risk[] = [
     category: RiskCategory.STRATEGIC,
     groupPrincipalRisk: 'Lack of adherence to health, safety, environment and security policies',
     inherentImpact: 3,
-    inherentLikelihood: 3,
+    inherentLikelihood: 3, // Score 9 -> Moderate
     controlsText: 'Coast guard liaison strengthened. Radar monitoring enhanced.',
     controlsRating: ControlRating.GOOD,
     residualImpact: 2,
-    residualLikelihood: 2,
+    residualLikelihood: 2, // Score 4 -> Low
     status: RiskStatus.OPEN,
     lastReviewDate: '',
     lastReviewer: '',
@@ -495,7 +497,7 @@ for (let i = 0; i < 5; i++) {
     controlsText: 'Standard controls.',
     controlsRating: ControlRating.GOOD,
     residualImpact: 2,
-    residualLikelihood: 3,
+    residualLikelihood: 3, // Score 6 -> Moderate
     status: RiskStatus.OPEN,
     lastReviewDate: '2023-11-01',
     lastReviewer: 'System',

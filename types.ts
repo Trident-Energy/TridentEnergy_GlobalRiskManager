@@ -1,4 +1,5 @@
 
+
 export enum Country {
   UK = 'UK',
   BR = 'BR',
@@ -32,18 +33,18 @@ export enum ControlRating {
 export enum RiskLevel {
   LOW = 'Low',
   MODERATE = 'Moderate',
-  SIGNIFICANT = 'Significant',
-  EXTREME = 'Extreme'
+  SIGNIFICANT = 'Significant'
 }
 
 export enum EscalationLevel {
-  FUNCTIONAL_L1 = 'Functional Managers (L1)',
-  COUNTRY_GM = 'Country GM Escalation',
-  TEML_L1 = 'TEML L1 Escalation',
-  CEO = 'CEO Escalation'
+  FUNCTIONAL_MANAGER = 'Functional Manager Escalation',
+  TEML_FUNCTIONAL_REVIEW = 'TEML Functional Review',
+  TEML_LEADERSHIP = 'TEML Leadership Team Escalation',
+  COUNTRY_MANAGER = 'Country Manager Escalation',
+  CORPORATE_RISK = 'Corporate Risk Profile'
 }
 
-export type UserRole = 'RMIA' | 'L2Manager' | 'FunctionalManager' | 'CountryGM' | 'TEMLLeadership' | 'CEO';
+export type UserRole = 'Manager' | 'RMIA' | 'Functional Manager' | 'TEML Functional' | 'Country Manager' | 'TEML Leadership Team' | 'CEO';
 
 export interface User {
   id: string;
@@ -52,6 +53,7 @@ export interface User {
   role: UserRole;
   groups: string[]; // e.g., "Country Risk Register BR"
   avatar?: string;
+  country?: Country;
 }
 
 export interface Comment {
@@ -62,6 +64,7 @@ export interface Comment {
   date: string; // ISO date string
   text: string;
   parentId?: string; // ID of the parent comment if this is a reply
+  likes?: string[]; // Array of user IDs who acknowledged the comment
 }
 
 export interface Attachment {

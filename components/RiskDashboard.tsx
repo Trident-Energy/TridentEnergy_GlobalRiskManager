@@ -1,4 +1,3 @@
-
 import React, { useMemo } from 'react';
 import { Risk, RiskStatus, User } from '../types';
 import { calculateRiskScore, getRiskLevel } from '../constants';
@@ -59,20 +58,35 @@ const RiskDashboard: React.FC<Props> = ({
   onHeatMapFilterChange
 }) => {
   
+  // Filter risks for Chart statistics based on HeatMap selection
+  const filteredRisks = useMemo(() => {
+    if (!activeHeatMapFilter) return risks;
+    
+    return risks.filter(r => {
+      const impact = activeHeatMapFilter.type === 'inherent' ? r.inherentImpact : r.residualImpact;
+      const likelihood = activeHeatMapFilter.type === 'inherent' ? r.inherentLikelihood : r.residualLikelihood;
+      return impact === activeHeatMapFilter.impact && likelihood === activeHeatMapFilter.likelihood;
+    });
+  }, [risks, activeHeatMapFilter]);
+
   // KPI Calculations
   const stats = useMemo(() => {
-    const totalRisks = risks.length;
+    const sourceData = filteredRisks;
+    const totalRisks = sourceData.length;
     
-    const openRisks = risks.filter(r => r.status === RiskStatus.OPEN).length;
-    const reviewedRisks = risks.filter(r => r.status === RiskStatus.REVIEWED).length;
-    const updatedRisks = risks.filter(r => r.status === RiskStatus.UPDATED).length;
+    const openRisks = sourceData.filter(r => r.status === RiskStatus.OPEN).length;
+    const reviewedRisks = sourceData.filter(r => r.status === RiskStatus.REVIEWED).length;
+    const updatedRisks = sourceData.filter(r => r.status === RiskStatus.UPDATED).length;
 
     // Personal Stats
-    const myRisksCount = risks.filter(r => r.owner === currentUser.name).length;
-    const collabRisksCount = risks.filter(r => r.collaborators.includes(currentUser.name)).length;
+    const myRisksCount = sourceData.filter(r => r.owner === currentUser.name).length;
+    const collabRisksCount = sourceData.filter(r => r.collaborators.includes(currentUser.name)).length;
+    
+    // Recalculate escalations based on filtered view
+    const localEscalatedCount = sourceData.filter(r => r.escalations?.some(e => e.userId === currentUser.id)).length;
 
-    return { totalRisks, openRisks, reviewedRisks, updatedRisks, myRisksCount, collabRisksCount };
-  }, [risks, currentUser]);
+    return { totalRisks, openRisks, reviewedRisks, updatedRisks, myRisksCount, collabRisksCount, localEscalatedCount };
+  }, [filteredRisks, currentUser]);
 
   // Chart Data
   const chartData = [
@@ -128,7 +142,7 @@ const RiskDashboard: React.FC<Props> = ({
           <div className="flex-1">
             <InteractiveCard 
               title="My Escalations" 
-              value={escalatedCount} 
+              value={stats.localEscalatedCount} 
               icon={<ShieldAlert className="text-orange-600 dark:text-orange-400" size={24} />} 
               color="bg-orange-100 dark:bg-orange-900" 
               isActive={quickFilter === 'ESCALATED'}
@@ -140,7 +154,7 @@ const RiskDashboard: React.FC<Props> = ({
         {/* Center Column: All Risks Heat Maps (1 Column) */}
         {/* Reverted to standard component usage to show header consistently */}
         <RiskHeatMap 
-          title="ALL RISKS" 
+          title="All Residual Risks" 
           risks={risks}
           type="residual"
           onCellClick={handleHeatMapClick}
@@ -150,13 +164,20 @@ const RiskDashboard: React.FC<Props> = ({
 
         {/* Right Column: Consolidated Bar Chart (2 Columns) */}
         <div className="lg:col-span-2 bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 p-6 flex flex-col transition-colors h-full min-h-[350px]">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="p-2 bg-slate-100 dark:bg-slate-800 rounded-lg">
-              <BarChartIcon size={20} className="text-slate-600 dark:text-slate-300" />
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-slate-100 dark:bg-slate-800 rounded-lg">
+                <BarChartIcon size={20} className="text-slate-600 dark:text-slate-300" />
+              </div>
+              <div>
+                <h3 className="font-bold text-slate-800 dark:text-white text-lg">Portfolio</h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">Overview Stats.</p>
+              </div>
             </div>
-            <div>
-              <h3 className="font-bold text-slate-800 dark:text-white text-lg">Portfolio</h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400">Overview Stats.</p>
+            
+            <div className="text-right">
+              <div className="text-3xl font-black text-slate-900 dark:text-white leading-none">{stats.totalRisks}</div>
+              <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mt-1">Total Risks</div>
             </div>
           </div>
           

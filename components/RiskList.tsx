@@ -2,7 +2,8 @@
 import React, { useState, useEffect } from 'react';
 import { Risk, Country, ActionPlan, User, RiskStatus, Comment } from '../types';
 import { calculateRiskScore, getRiskLevel, getControlRatingColor, COUNTRIES } from '../constants';
-import { ChevronRight, ChevronLeft, ChevronRight as ChevronRightIcon, AlertTriangle, User as UserIcon, Users, ArrowUpDown, MessageSquare, ArrowUp, ArrowDown, Square, Triangle, ShieldAlert } from 'lucide-react';
+import { ChevronRight, ChevronLeft, ChevronRight as ChevronRightIcon, AlertTriangle, User as UserIcon, Users, ArrowUpDown, MessageSquare, ArrowUp, ArrowDown, Square, Triangle, ShieldAlert, AlertCircle } from 'lucide-react';
+import { SortOption } from '../App';
 
 interface Props {
   risks: Risk[];
@@ -10,7 +11,7 @@ interface Props {
   comments: Comment[];
   currentUser: User;
   onSelectRisk: (risk: Risk) => void;
-  sortOrder: 'newest' | 'oldest';
+  sortOrder: SortOption;
   visibleColumns?: string[]; // New optional prop
 }
 
@@ -18,7 +19,7 @@ const ITEMS_PER_PAGE = 25;
 
 const RiskList: React.FC<Props> = ({ risks, actions, comments, currentUser, onSelectRisk, sortOrder, visibleColumns }) => {
   const [currentPage, setCurrentPage] = useState(1);
-  const [sortKey, setSortKey] = useState<keyof Risk>('creationDate');
+  const [sortKey, setSortKey] = useState<keyof Risk | 'residualScore' | 'escalationCount' | 'latestComment'>('creationDate');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
 
   // Default to all columns if prop not provided (for backward compatibility)
@@ -31,8 +32,59 @@ const RiskList: React.FC<Props> = ({ risks, actions, comments, currentUser, onSe
 
   // Sync sorting with parent filter
   useEffect(() => {
-    setSortKey('creationDate');
-    setSortDirection(sortOrder === 'newest' ? 'desc' : 'asc');
+    switch (sortOrder) {
+      case 'newest':
+        setSortKey('creationDate');
+        setSortDirection('desc');
+        break;
+      case 'oldest':
+        setSortKey('creationDate');
+        setSortDirection('asc');
+        break;
+      case 'last_reviewed_newest':
+        setSortKey('lastReviewDate');
+        setSortDirection('desc');
+        break;
+      case 'last_reviewed_oldest':
+        setSortKey('lastReviewDate');
+        setSortDirection('asc');
+        break;
+      case 'highest_residual':
+        setSortKey('residualScore');
+        setSortDirection('desc');
+        break;
+      case 'lowest_risk':
+        setSortKey('residualScore');
+        setSortDirection('asc');
+        break;
+      case 'escalations':
+        setSortKey('escalationCount');
+        setSortDirection('desc');
+        break;
+      case 'ownership':
+        setSortKey('owner');
+        setSortDirection('asc');
+        break;
+      case 'function':
+        setSortKey('functionArea');
+        setSortDirection('asc');
+        break;
+      case 'last_reviewer_az':
+        setSortKey('lastReviewer');
+        setSortDirection('asc');
+        break;
+      case 'last_reviewer_za':
+        setSortKey('lastReviewer');
+        setSortDirection('desc');
+        break;
+      case 'newest_comments':
+        setSortKey('latestComment');
+        setSortDirection('desc');
+        break;
+      default:
+        setSortKey('creationDate');
+        setSortDirection('desc');
+    }
   }, [sortOrder]);
 
   const handleSort = (key: keyof Risk) => {
@@ -45,8 +97,33 @@ const RiskList: React.FC<Props> = ({ risks, actions, comments, currentUser, onSe
   };
 
   const sortedRisks = [...risks].sort((a, b) => {
-    const aValue = a[sortKey];
-    const bValue = b[sortKey];
+    // Handle computed/special keys first
+    if (sortKey === 'residualScore') {
+       const scoreA = calculateRiskScore(a.residualImpact, a.residualLikelihood);
+       const scoreB = calculateRiskScore(b.residualImpact, b.residualLikelihood);
+       return sortDirection === 'asc' ? scoreA - scoreB : scoreB - scoreA;
+    }
+
+    if (sortKey === 'escalationCount') {
+       const countA = a.escalations?.length || 0;
+       const countB = b.escalations?.length || 0;
+       return sortDirection === 'asc' ? countA - countB : countB - countA;
+    }
+
+    if (sortKey === 'latestComment') {
+       const getLatest = (rId: string) => {
+           const riskComments = comments.filter(c => c.riskId === rId);
+           if (!riskComments.length) return 0;
+           return Math.max(...riskComments.map(c => new Date(c.date).getTime()));
+       };
+       const dateA = getLatest(a.id);
+       const dateB = getLatest(b.id);
+       return sortDirection === 'asc' ? dateA - dateB : dateB - dateA;
+    }
+
+    // Standard Property Sort
+    const aValue = a[sortKey as keyof Risk];
+    const bValue = b[sortKey as keyof Risk];
 
     if (aValue === bValue) return 0;
     
@@ -197,24 +274,24 @@ const RiskList: React.FC<Props> = ({ risks, actions, comments, currentUser, onSe
         <table className={`w-full text-left border-collapse ${tableMinWidth}`}>
           <thead>
             <tr className="bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 text-xs text-slate-500 dark:text-slate-400 font-bold">
-              {isVisible('warning') && <th className="px-4 py-4 w-10"></th>} {/* Warning Icon */}
-              {isVisible('role') && <th className="px-4 py-4 w-32">My Role</th>}
-              {isVisible('escalation') && <th className="px-4 py-4 w-40">Escalation</th>}
-              {isVisible('comments') && <th className="px-4 py-4 w-20 text-center">Comments</th>} 
-              {isVisible('creationDate') && <SortHeader label="Created" columnKey="creationDate" width="w-28" />}
-              {isVisible('country') && <th className="px-4 py-4 w-20">Country</th>}
-              {isVisible('register') && <SortHeader label="Risk Register" columnKey="register" width="w-32" />}
-              {isVisible('id') && <SortHeader label="Risk Id" columnKey="id" width="w-24" />}
-              {isVisible('trend') && <th className="px-4 py-4 w-16 text-center">Trend</th>} 
-              {isVisible('title') && <SortHeader label="Key Business Risk Title" columnKey="title" width="w-80" />}
-              {isVisible('owner') && <SortHeader label="Risk Owner" columnKey="owner" width="w-40" />}
-              {isVisible('functionArea') && <SortHeader label="Function/Area" columnKey="functionArea" width="w-48" />}
-              {isVisible('inherentScore') && <th className="px-4 py-4 w-40">Inherent Risk Score</th>}
-              {isVisible('controlsRating') && <th className="px-4 py-4 w-32">Controls rating</th>}
-              {isVisible('residualScore') && <th className="px-4 py-4 w-40">Residual Risk Score</th>}
-              {isVisible('status') && <SortHeader label="Risk Status" columnKey="status" width="w-32" />}
-              {isVisible('lastReviewDate') && <SortHeader label="Last Review Date" columnKey="lastReviewDate" width="w-32" />}
-              {isVisible('lastReviewer') && <th className="px-4 py-4 w-40">Last Reviewer</th>}
+              {isVisible('warning') && <th className="px-4 py-4 w-10"></th>} {/* 1. Warning Icon */}
+              {isVisible('role') && <th className="px-4 py-4 w-32">My Role</th>} {/* 2. My Role */}
+              {isVisible('country') && <th className="px-4 py-4 w-20">Country</th>} {/* 3. Country */}
+              {isVisible('register') && <SortHeader label="Risk Register" columnKey="register" width="w-32" />} {/* 4. Risk Register */}
+              {isVisible('id') && <SortHeader label="Risk Id" columnKey="id" width="w-24" />} {/* 5. Risk ID */}
+              {isVisible('title') && <SortHeader label="Key Business Risk Title" columnKey="title" width="w-80" />} {/* 6. Key Business Risk Title */}
+              {isVisible('functionArea') && <SortHeader label="Function/Area" columnKey="functionArea" width="w-48" />} {/* 7. Function/Area */}
+              {isVisible('trend') && <th className="px-4 py-4 w-16 text-center">Trend</th>} {/* 8. Trend */}
+              {isVisible('inherentScore') && <th className="px-4 py-4 w-40">Inherent Risk Score</th>} {/* 9. Inherent Risk Score */}
+              {isVisible('controlsRating') && <th className="px-4 py-4 w-32">Controls rating</th>} {/* 10. Controls Rating */}
+              {isVisible('residualScore') && <th className="px-4 py-4 w-40">Residual Risk Score</th>} {/* 11. Residual Risk Score */}
+              {isVisible('owner') && <SortHeader label="Risk Owner" columnKey="owner" width="w-40" />} {/* 12. Risk Owner */}
+              {isVisible('status') && <SortHeader label="Risk Status" columnKey="status" width="w-32" />} {/* 13. Risk Status */}
+              {isVisible('comments') && <th className="px-4 py-4 w-20 text-center">Comments</th>} {/* 14. Comments */}
+              {isVisible('escalation') && <th className="px-4 py-4 w-40">Escalation</th>} {/* 15. Escalation */}
+              {isVisible('creationDate') && <SortHeader label="Created" columnKey="creationDate" width="w-28" />} {/* 16. Created */}
+              {isVisible('lastReviewDate') && <SortHeader label="Last Review Date" columnKey="lastReviewDate" width="w-32" />} {/* 17. Last Review Date */}
+              {isVisible('lastReviewer') && <th className="px-4 py-4 w-40">Last Reviewer</th>} {/* 18. Last Reviewer */}
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -244,9 +321,11 @@ const RiskList: React.FC<Props> = ({ risks, actions, comments, currentUser, onSe
                 const isClosed = risk.status === RiskStatus.CLOSED;
 
                 // Determine if warning should be shown:
-                // 1. No actions
-                // 2. Not closed
-                // 3. Residual risk is Moderate OR Significant
+                // 1. Scoring Error (Residual > Inherent) - Critical
+                const isScoringError = rScore > iScore;
+
+                // 2. Missing Action Plan
+                // No actions + Not closed + Residual is Moderate OR Significant
                 const showMissingActionWarning = !hasActions && !isClosed && (rLevel.label === 'Moderate' || rLevel.label === 'Significant');
 
                 return (
@@ -259,23 +338,34 @@ const RiskList: React.FC<Props> = ({ risks, actions, comments, currentUser, onSe
                         : 'hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300'
                     }`}
                   >
-                    {/* Warning Column */}
+                    {/* 1. Warning Column */}
                     {isVisible('warning') && (
                       <td className="px-4 py-3 text-center overflow-visible">
-                        {showMissingActionWarning && (
-                          <div className="group/tooltip relative inline-flex justify-center">
-                            <AlertTriangle size={18} className="text-red-500 fill-red-50 dark:fill-red-900/20" />
-                            <div className="absolute left-full top-1/2 -translate-y-1/2 ml-2 w-max max-w-[200px] px-3 py-2 bg-slate-800 text-white text-xs rounded opacity-0 group-hover/tooltip:opacity-100 z-50 pointer-events-none transition-opacity shadow-xl whitespace-normal text-left">
-                              High/Moderate Risk without Action Plan
-                              {/* Little Arrow pointing left */}
-                              <div className="absolute top-1/2 -left-1 -translate-y-1/2 w-2 h-2 bg-slate-800 rotate-45"></div>
+                         <div className="flex items-center justify-center gap-1">
+                          {isScoringError && (
+                             <div className="group/tooltip relative inline-flex justify-center">
+                               <AlertCircle size={18} className="text-red-600 fill-red-50 dark:fill-red-900/20" />
+                               <div className="absolute left-full top-1/2 -translate-y-1/2 ml-2 w-max max-w-[200px] px-3 py-2 bg-slate-800 text-white text-xs rounded opacity-0 group-hover/tooltip:opacity-100 z-50 pointer-events-none transition-opacity shadow-xl whitespace-normal text-left">
+                                 Scoring Error: Residual Risk cannot be higher than Inherent Risk
+                                 <div className="absolute top-1/2 -left-1 -translate-y-1/2 w-2 h-2 bg-slate-800 rotate-45"></div>
+                               </div>
+                             </div>
+                          )}
+
+                          {showMissingActionWarning && !isScoringError && (
+                            <div className="group/tooltip relative inline-flex justify-center">
+                              <AlertTriangle size={18} className="text-red-500 fill-red-50 dark:fill-red-900/20" />
+                              <div className="absolute left-full top-1/2 -translate-y-1/2 ml-2 w-max max-w-[200px] px-3 py-2 bg-slate-800 text-white text-xs rounded opacity-0 group-hover/tooltip:opacity-100 z-50 pointer-events-none transition-opacity shadow-xl whitespace-normal text-left">
+                                High/Moderate Risk without Action Plan
+                                <div className="absolute top-1/2 -left-1 -translate-y-1/2 w-2 h-2 bg-slate-800 rotate-45"></div>
+                              </div>
                             </div>
-                          </div>
-                        )}
+                          )}
+                        </div>
                       </td>
                     )}
 
-                    {/* My Role Column */}
+                    {/* 2. My Role Column */}
                     {isVisible('role') && (
                       <td className="px-4 py-3">
                         <div className="flex flex-col items-start gap-1">
@@ -293,20 +383,94 @@ const RiskList: React.FC<Props> = ({ risks, actions, comments, currentUser, onSe
                       </td>
                     )}
 
-                    {/* Escalation Column */}
-                    {isVisible('escalation') && (
-                      <td className="px-4 py-3">
-                        <div className="flex flex-col items-start gap-1">
-                          {escalationLevels.map(level => (
-                            <span key={level} className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-bold border whitespace-nowrap ${isClosed ? 'bg-slate-100 dark:bg-slate-800 text-slate-500 border-slate-200 dark:border-slate-700' : 'bg-orange-50 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300 border-orange-100 dark:border-orange-800'}`}>
-                                <ShieldAlert size={10} /> {level}
+                    {/* 3. Country */}
+                    {isVisible('country') && (
+                      <td className="px-4 py-3 text-center">
+                        <div className={`flex justify-center ${isClosed ? 'opacity-50 grayscale' : ''}`}>{getFlag(risk.country)}</div>
+                      </td>
+                    )}
+
+                    {/* 4. Register */}
+                    {isVisible('register') && <td className="px-4 py-3">{risk.register}</td>}
+
+                    {/* 5. ID */}
+                    {isVisible('id') && <td className="px-4 py-3 font-mono text-slate-500 dark:text-slate-400">{risk.id}</td>}
+
+                    {/* 6. Title */}
+                    {isVisible('title') && (
+                      <td className="px-4 py-3 font-medium">
+                        <div className="flex items-center gap-2">
+                          <span className={isClosed ? 'line-through text-slate-400 dark:text-slate-500' : 'text-slate-800 dark:text-slate-200'}>
+                            {risk.title}
+                          </span>
+                          {isClosed && (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400 border border-slate-300 dark:border-slate-600 uppercase tracking-wide">
+                                Closed
                             </span>
-                          ))}
+                          )}
                         </div>
                       </td>
                     )}
 
-                    {/* Comments Column */}
+                    {/* 7. Function */}
+                    {isVisible('functionArea') && <td className="px-4 py-3">{risk.functionArea}</td>}
+
+                    {/* 8. Trend Column */}
+                    {isVisible('trend') && (
+                      <td className="px-4 py-3 text-center overflow-visible">
+                        <div className="flex justify-center">
+                          {renderTrendIcon(trend)}
+                        </div>
+                      </td>
+                    )}
+                    
+                    {/* 9. Inherent Score */}
+                    {isVisible('inherentScore') && (
+                      <td className="px-4 py-3">
+                        <span className={`inline-flex items-center justify-center px-3 py-1 rounded-full text-xs font-bold w-full ${isClosed ? 'bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400' : iLevel.color}`}>
+                          {iScore} - {iLevel.label}
+                        </span>
+                      </td>
+                    )}
+
+                    {/* 10. Controls Rating */}
+                    {isVisible('controlsRating') && (
+                      <td className="px-4 py-3 text-center">
+                        <span className={`inline-flex items-center justify-center px-3 py-1 rounded-full text-xs font-bold w-full ${isClosed ? 'bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400' : controlColor}`}>
+                          {risk.controlsRating}
+                        </span>
+                      </td>
+                    )}
+
+                    {/* 11. Residual Score */}
+                    {isVisible('residualScore') && (
+                      <td className="px-4 py-3">
+                        <span className={`inline-flex items-center justify-center px-3 py-1 rounded-full text-xs font-bold w-full ${isClosed ? 'bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400' : rLevel.color}`}>
+                          {rScore} - {rLevel.label}
+                        </span>
+                      </td>
+                    )}
+
+                    {/* 12. Owner */}
+                    {isVisible('owner') && (
+                      <td className={`px-4 py-3 ${isClosed ? 'text-slate-400 dark:text-slate-500' : 'text-blue-600 dark:text-blue-400 hover:underline'}`}>{risk.owner}</td>
+                    )}
+
+                    {/* 13. Status */}
+                    {isVisible('status') && (
+                      <td className="px-4 py-3">
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                          isClosed ? 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400' : 
+                          risk.status === 'Open' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300' :
+                          risk.status === 'Updated' ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300' :
+                          'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300'
+                        }`}>
+                          {risk.status}
+                        </span>
+                      </td>
+                    )}
+
+                    {/* 14. Comments Column */}
                     {isVisible('comments') && (
                       <td className="px-4 py-3 text-center">
                         {commentCount > 0 && (
@@ -330,108 +494,34 @@ const RiskList: React.FC<Props> = ({ risks, actions, comments, currentUser, onSe
                       </td>
                     )}
 
-                    {/* Creation Date */}
+                    {/* 15. Escalation Column */}
+                    {isVisible('escalation') && (
+                      <td className="px-4 py-3">
+                        <div className="flex flex-col items-start gap-1">
+                          {escalationLevels.map(level => (
+                            <span key={level} className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-bold border whitespace-nowrap ${isClosed ? 'bg-slate-100 dark:bg-slate-800 text-slate-500 border-slate-200 dark:border-slate-700' : 'bg-orange-50 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300 border-orange-100 dark:border-orange-800'}`}>
+                                <ShieldAlert size={10} /> {level}
+                            </span>
+                          ))}
+                        </div>
+                      </td>
+                    )}
+
+                    {/* 16. Creation Date */}
                     {isVisible('creationDate') && (
                       <td className="px-4 py-3 text-xs text-slate-500 dark:text-slate-400 font-mono">
                         {risk.creationDate}
                       </td>
                     )}
 
-                    {/* Country */}
-                    {isVisible('country') && (
-                      <td className="px-4 py-3 text-center">
-                        <div className={`flex justify-center ${isClosed ? 'opacity-50 grayscale' : ''}`}>{getFlag(risk.country)}</div>
-                      </td>
-                    )}
-
-                    {/* Register */}
-                    {isVisible('register') && <td className="px-4 py-3">{risk.register}</td>}
-
-                    {/* ID */}
-                    {isVisible('id') && <td className="px-4 py-3 font-mono text-slate-500 dark:text-slate-400">{risk.id}</td>}
-
-                    {/* Trend Column */}
-                    {isVisible('trend') && (
-                      <td className="px-4 py-3 text-center overflow-visible">
-                        <div className="flex justify-center">
-                          {renderTrendIcon(trend)}
-                        </div>
-                      </td>
-                    )}
-
-                    {/* Title */}
-                    {isVisible('title') && (
-                      <td className="px-4 py-3 font-medium">
-                        <div className="flex items-center gap-2">
-                          <span className={isClosed ? 'line-through text-slate-400 dark:text-slate-500' : 'text-slate-800 dark:text-slate-200'}>
-                            {risk.title}
-                          </span>
-                          {isClosed && (
-                            <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400 border border-slate-300 dark:border-slate-600 uppercase tracking-wide">
-                                Closed
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                    )}
-
-                    {/* Owner */}
-                    {isVisible('owner') && (
-                      <td className={`px-4 py-3 ${isClosed ? 'text-slate-400 dark:text-slate-500' : 'text-blue-600 dark:text-blue-400 hover:underline'}`}>{risk.owner}</td>
-                    )}
-
-                    {/* Function */}
-                    {isVisible('functionArea') && <td className="px-4 py-3">{risk.functionArea}</td>}
-                    
-                    {/* Inherent Score */}
-                    {isVisible('inherentScore') && (
-                      <td className="px-4 py-3">
-                        <span className={`inline-flex items-center justify-center px-3 py-1 rounded-full text-xs font-bold w-full ${isClosed ? 'bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400' : iLevel.color}`}>
-                          {iScore} - {iLevel.label}
-                        </span>
-                      </td>
-                    )}
-
-                    {/* Controls Rating */}
-                    {isVisible('controlsRating') && (
-                      <td className="px-4 py-3 text-center">
-                        <span className={`inline-flex items-center justify-center px-3 py-1 rounded-full text-xs font-bold w-full ${isClosed ? 'bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400' : controlColor}`}>
-                          {risk.controlsRating}
-                        </span>
-                      </td>
-                    )}
-
-                    {/* Residual Score */}
-                    {isVisible('residualScore') && (
-                      <td className="px-4 py-3">
-                        <span className={`inline-flex items-center justify-center px-3 py-1 rounded-full text-xs font-bold w-full ${isClosed ? 'bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400' : rLevel.color}`}>
-                          {rScore} - {rLevel.label}
-                        </span>
-                      </td>
-                    )}
-
-                    {/* Status */}
-                    {isVisible('status') && (
-                      <td className="px-4 py-3">
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold ${
-                          isClosed ? 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400' : 
-                          risk.status === 'Open' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300' :
-                          risk.status === 'Updated' ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300' :
-                          'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300'
-                        }`}>
-                          {risk.status}
-                        </span>
-                      </td>
-                    )}
-
-                    {/* Last Review Date */}
+                    {/* 17. Last Review Date */}
                     {isVisible('lastReviewDate') && (
                       <td className="px-4 py-3">
                         {risk.lastReviewDate || '-'}
                       </td>
                     )}
 
-                    {/* Last Reviewer */}
+                    {/* 18. Last Reviewer */}
                     {isVisible('lastReviewer') && (
                       <td className="px-4 py-3 text-xs">
                         {risk.lastReviewer}

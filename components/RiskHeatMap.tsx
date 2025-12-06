@@ -1,4 +1,3 @@
-
 import React, { useMemo } from 'react';
 import { Risk } from '../types';
 import { calculateRiskScore, getRiskLevel } from '../constants';
@@ -40,8 +39,8 @@ const RiskHeatMap: React.FC<Props> = ({
     const map = new Map<string, number>();
     risks.forEach(r => {
       const impact = type === 'inherent' ? r.inherentImpact : r.residualImpact;
-      const likelihood = type === 'inherent' ? r.inherentLikelihood : r.residualLikelihood;
-      const key = `${impact}-${likelihood}`;
+      const l = type === 'inherent' ? r.inherentLikelihood : r.residualLikelihood;
+      const key = `${impact}-${l}`;
       map.set(key, (map.get(key) || 0) + 1);
     });
     return map;
@@ -62,14 +61,15 @@ const RiskHeatMap: React.FC<Props> = ({
        {!hideHeader && (
          <div className="flex justify-between w-full items-center mb-4 pb-2 border-b border-slate-100 dark:border-slate-800">
             <h3 className="font-bold text-slate-700 dark:text-slate-200 uppercase text-xs tracking-wider">{title}</h3>
-            <span className="text-xs font-mono text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-full">{risks.length} Risks</span>
+            <span className="text-xs font-bold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-md border border-slate-200 dark:border-slate-700">{risks.length} Risks</span>
          </div>
        )}
 
-       <div className="relative">
-          {/* Y-Axis Label */}
-          <div className="absolute -left-6 top-1/2 -translate-y-1/2 -rotate-90 text-[9px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap">
-            Probability
+       {/* Added ml-12 to shift grid right to accommodate the far-left label */}
+       <div className="relative ml-12">
+          {/* Y-Axis Label: Moved to -left-14 to clear color zone completely */}
+          <div className="absolute -left-14 top-1/2 -translate-y-1/2 -rotate-90 text-[9px] font-bold text-slate-400 uppercase tracking-widest whitespace-nowrap">
+            Likelihood
           </div>
 
           {/* Grid */}
@@ -83,10 +83,11 @@ const RiskHeatMap: React.FC<Props> = ({
                       // Extract color classes
                       let bgClass = '';
                       if (level.label === 'Significant') bgClass = 'bg-red-600 dark:bg-red-700';
-                      else if (level.label === 'Moderate') bgClass = 'bg-amber-400 dark:bg-amber-500';
+                      else if (level.label === 'Moderate') bgClass = 'bg-yellow-400 dark:bg-yellow-500';
                       else bgClass = 'bg-emerald-500 dark:bg-emerald-600';
 
                       const count = matrixData.get(`${impact}-${likelihood}`) || 0;
+                      
                       const isCellActive = isMapActive && activeFilter?.impact === impact && activeFilter?.likelihood === likelihood;
                       // Dim if map is active but this cell is not selected
                       const isDimmed = isMapActive && !isCellActive; 
@@ -120,8 +121,8 @@ const RiskHeatMap: React.FC<Props> = ({
           </div>
           
           {/* X-Axis Label */}
-          <div className="text-center mt-3 text-[9px] font-bold text-slate-400 uppercase tracking-widest">
-            Consequence
+          <div className="mt-3 text-[9px] font-bold text-slate-400 uppercase tracking-widest text-left">
+            Impact
           </div>
        </div>
     </div>

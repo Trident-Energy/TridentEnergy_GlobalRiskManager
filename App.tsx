@@ -1,21 +1,22 @@
-
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { LayoutDashboard, BarChart3, Settings, Search, Plus, User as UserIcon, LogOut, XCircle, Download, RefreshCw, AlertCircle, AlertTriangle, Moon, Sun, Grid2X2, Columns, CheckSquare, Square, EyeOff } from 'lucide-react';
+import { LayoutDashboard, BarChart3, Settings, Search, Plus, User as UserIcon, LogOut, XCircle, Download, RefreshCw, AlertCircle, AlertTriangle, Moon, Sun, Grid2X2, Columns, CheckSquare, Square, EyeOff, Shield, BookOpen } from 'lucide-react';
 import RiskDashboard from './components/RiskDashboard';
 import RiskList from './components/RiskList';
 import RiskDetail from './components/RiskDetail';
 import RiskCategoryDashboard from './components/RiskCategoryDashboard';
+import UserManagement from './components/UserManagement';
+import UserGuide from './components/UserGuide';
 import { MOCK_RISKS, MOCK_ACTIONS, MOCK_COMMENTS, COUNTRIES, MOCK_USERS, GROUPS, calculateRiskScore, getRiskLevel, AVAILABLE_COLUMNS } from './constants';
-import { Country, Risk, ActionPlan, Comment, User, RiskStatus, RiskLevel, AuditLogEntry } from './types';
+import { Country, Risk, ActionPlan, Comment, User, RiskStatus, RiskLevel, AuditLogEntry, UserRole } from './types';
 import { CellFilter } from './components/RiskHeatMap';
 
 const NavItem = ({ icon, label, active, onClick }: any) => (
   <button 
     onClick={onClick}
-    className={`flex items-center gap-2 px-4 py-3 text-sm font-medium transition-colors border-b-2 ${
+    className={`flex items-center gap-2 px-4 py-3 text-sm font-medium transition-all border-b-4 rounded-t-lg ${
       active 
-        ? 'border-blue-600 text-blue-600 dark:border-blue-400 dark:text-blue-400' 
-        : 'border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300 dark:text-slate-400 dark:hover:text-slate-200 dark:hover:border-slate-600'
+        ? 'border-white text-white bg-white/10' 
+        : 'border-transparent text-slate-300 hover:text-white hover:bg-white/5'
     }`}
   >
     {icon}
@@ -23,8 +24,23 @@ const NavItem = ({ icon, label, active, onClick }: any) => (
   </button>
 );
 
+// Define Sort Option Type for better type safety
+export type SortOption = 
+  | 'newest' 
+  | 'oldest' 
+  | 'last_reviewed_newest' 
+  | 'last_reviewed_oldest' 
+  | 'highest_residual' 
+  | 'lowest_risk' 
+  | 'escalations' 
+  | 'ownership' 
+  | 'function' 
+  | 'last_reviewer_az' 
+  | 'last_reviewer_za' 
+  | 'newest_comments';
+
 const App = () => {
-  const [currentView, setCurrentView] = useState<'dashboard' | 'categoryDashboard' | 'reports' | 'admin'>('dashboard');
+  const [currentView, setCurrentView] = useState<'dashboard' | 'categoryDashboard' | 'reports' | 'admin' | 'help'>('dashboard');
   const [selectedCountry, setSelectedCountry] = useState<Country | 'ALL'>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
   
@@ -34,15 +50,19 @@ const App = () => {
   const [filterFunction, setFilterFunction] = useState('ALL');
   const [filterStatus, setFilterStatus] = useState('ALL');
   const [filterScore, setFilterScore] = useState('ALL');
-  const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest');
+  const [filterLastReviewer, setFilterLastReviewer] = useState('ALL');
+  
+  // Sorting State
+  const [sortOrder, setSortOrder] = useState<SortOption>('newest');
 
   // Quick Filter State (Dashboard Interaction)
   const [quickFilter, setQuickFilter] = useState<'ALL' | 'MY_RISKS' | 'COLLAB' | 'ESCALATED'>('ALL');
   const [dashboardHeatMapFilter, setDashboardHeatMapFilter] = useState<CellFilter | null>(null);
 
   // Column Visibility State
+  // Default visible columns: all except 'id'
   const [visibleColumns, setVisibleColumns] = useState<string[]>(
-    AVAILABLE_COLUMNS.map(c => c.key) // Default all visible
+    AVAILABLE_COLUMNS.map(c => c.key).filter(key => key !== 'id')
   );
   const [showColumnMenu, setShowColumnMenu] = useState(false);
   const columnMenuRef = useRef<HTMLDivElement>(null);
@@ -56,8 +76,8 @@ const App = () => {
   const [comments, setComments] = useState<Comment[]>(MOCK_COMMENTS);
   const [users, setUsers] = useState<User[]>(MOCK_USERS);
   
-  // Mock Current User (Admin)
-  const CURRENT_USER = users[0]; // Jane Doe (RMIA / Admin)
+  // Current User State (Initialized with Admin user)
+  const [currentUser, setCurrentUser] = useState<User>(MOCK_USERS[0]); 
   
   // Selected Risk for Detail View
   const [selectedRisk, setSelectedRisk] = useState<Risk | null>(null);
@@ -98,17 +118,43 @@ const App = () => {
   const uniqueOwners = useMemo(() => Array.from(new Set(risks.map(r => r.owner))).sort(), [risks]);
   const uniqueRegisters = useMemo(() => Array.from(new Set(risks.map(r => r.register))).sort(), [risks]);
   const uniqueFunctions = useMemo(() => Array.from(new Set(risks.map(r => r.functionArea))).sort(), [risks]);
+  const uniqueLastReviewers = useMemo(() => Array.from(new Set(risks.map(r => r.lastReviewer))).filter(Boolean).sort(), [risks]);
 
   // 1. Base Filtered Risks (Context for Dashboard Stats)
   const dashboardRisks = useMemo(() => {
     return risks.filter(r => {
       // PERMISSION CHECK: VISIBILITY
-      // RMIA sees ALL.
-      // Everyone else sees: Own OR Collaborator OR Escalated To Them
-      if (CURRENT_USER.role !== 'RMIA') {
-         const isOwner = r.owner === CURRENT_USER.name;
-         const isCollaborator = r.collaborators.includes(CURRENT_USER.name);
-         const isEscalated = (r.escalations || []).some(e => e.userId === CURRENT_USER.id);
+      if (currentUser.role === 'RMIA') {
+        // RMIA sees ALL.
+      } else if (currentUser.role === 'Country Manager') {
+        // Country Manager sees risks from their country (determined by groups) OR risks they are involved in
+        
+        // Determine authorized countries based on Groups AND assigned Country
+        const authorizedCountries: Country[] = [];
+        if (currentUser.groups) {
+          if (currentUser.groups.includes('REG_BR')) authorizedCountries.push(Country.BR);
+          if (currentUser.groups.includes('REG_GQ')) authorizedCountries.push(Country.GQ);
+          if (currentUser.groups.includes('REG_CG')) authorizedCountries.push(Country.CG);
+        }
+        
+        // Fallback: Also include the primary country property if set
+        if (currentUser.country && !authorizedCountries.includes(currentUser.country)) {
+            authorizedCountries.push(currentUser.country);
+        }
+
+        const matchesCountry = authorizedCountries.includes(r.country);
+        const isOwner = r.owner === currentUser.name;
+        const isCollaborator = r.collaborators.includes(currentUser.name);
+        const isEscalated = (r.escalations || []).some(e => e.userId === currentUser.id);
+
+        if (!matchesCountry && !isOwner && !isCollaborator && !isEscalated) {
+          return false;
+        }
+      } else {
+         // Everyone else sees: Own OR Collaborator OR Escalated To Them
+         const isOwner = r.owner === currentUser.name;
+         const isCollaborator = r.collaborators.includes(currentUser.name);
+         const isEscalated = (r.escalations || []).some(e => e.userId === currentUser.id);
          
          if (!isOwner && !isCollaborator && !isEscalated) {
            return false; // Hidden from user
@@ -128,6 +174,7 @@ const App = () => {
       const matchRegister = filterRegister === 'ALL' || r.register === filterRegister;
       const matchFunction = filterFunction === 'ALL' || r.functionArea === filterFunction;
       const matchStatus = filterStatus === 'ALL' || r.status === filterStatus;
+      const matchLastReviewer = filterLastReviewer === 'ALL' || r.lastReviewer === filterLastReviewer;
       
       // Score Filter
       let matchScore = true;
@@ -137,9 +184,9 @@ const App = () => {
          matchScore = level === filterScore;
       }
 
-      return matchCountry && matchSearch && matchOwner && matchRegister && matchFunction && matchStatus && matchScore;
+      return matchCountry && matchSearch && matchOwner && matchRegister && matchFunction && matchStatus && matchLastReviewer && matchScore;
     });
-  }, [risks, selectedCountry, searchQuery, filterOwner, filterRegister, filterFunction, filterStatus, filterScore, CURRENT_USER]);
+  }, [risks, selectedCountry, searchQuery, filterOwner, filterRegister, filterFunction, filterStatus, filterLastReviewer, filterScore, currentUser]);
 
   // 2. List Risks (Context for the Grid)
   const listRisks = useMemo(() => {
@@ -158,24 +205,24 @@ const App = () => {
       }
 
       if (quickFilter === 'MY_RISKS') {
-        return r.owner === CURRENT_USER.name;
+        return r.owner === currentUser.name;
       }
       if (quickFilter === 'COLLAB') {
-        return r.collaborators.includes(CURRENT_USER.name);
+        return r.collaborators.includes(currentUser.name);
       }
       if (quickFilter === 'ESCALATED') {
-        return r.escalations?.some(e => e.userId === CURRENT_USER.id);
+        return r.escalations?.some(e => e.userId === currentUser.id);
       }
       return true;
     });
-  }, [dashboardRisks, quickFilter, CURRENT_USER, dashboardHeatMapFilter]);
+  }, [dashboardRisks, quickFilter, currentUser, dashboardHeatMapFilter]);
 
   // Calculate Escalations for the DASHBOARD context
   const myEscalationsCount = useMemo(() => {
     return dashboardRisks.filter(r => 
-      r.escalations?.some(e => e.userId === CURRENT_USER.id)
+      r.escalations?.some(e => e.userId === currentUser.id)
     ).length;
-  }, [dashboardRisks, CURRENT_USER]);
+  }, [dashboardRisks, currentUser]);
 
   // --- Helpers for Audit Logging ---
   const addAuditLog = (riskId: string, action: string, details: string) => {
@@ -183,7 +230,7 @@ const App = () => {
     const newLog: AuditLogEntry = {
       id: `H-${Date.now()}-${Math.random()}`,
       date: timestamp,
-      user: CURRENT_USER.name,
+      user: currentUser.name,
       action: action,
       details: details
     };
@@ -259,8 +306,8 @@ const App = () => {
     const newComment: Comment = {
       id: `C-${Date.now()}`,
       riskId,
-      userId: CURRENT_USER.id,
-      userName: CURRENT_USER.name,
+      userId: currentUser.id,
+      userName: currentUser.name,
       date: new Date().toISOString(),
       text,
       parentId // Optional parent ID for threading
@@ -292,17 +339,40 @@ const App = () => {
     }
   };
 
-  const handleUserGroupChange = (userId: string, groupId: string) => {
-    setUsers(users.map(u => {
-      if (u.id !== userId) return u;
-      const hasGroup = u.groups.includes(groupId);
-      return {
-        ...u,
-        groups: hasGroup 
-          ? u.groups.filter(g => g !== groupId)
-          : [...u.groups, groupId]
-      };
+  const handleLikeComment = (commentId: string) => {
+    setComments(prev => prev.map(c => {
+      if (c.id === commentId) {
+        const currentLikes = c.likes || [];
+        const userId = currentUser.id;
+        if (currentLikes.includes(userId)) {
+          // Unlike
+          return { ...c, likes: currentLikes.filter(id => id !== userId) };
+        } else {
+          // Like
+          return { ...c, likes: [...currentLikes, userId] };
+        }
+      }
+      return c;
     }));
+  };
+
+  // User Management Handlers
+  const handleAddUser = (newUser: User) => {
+    setUsers([...users, newUser]);
+  };
+
+  const handleUpdateUser = (updatedUser: User) => {
+    setUsers(users.map(u => u.id === updatedUser.id ? updatedUser : u));
+  };
+
+  const handleDeleteUser = (userId: string) => {
+    if (userId === currentUser.id) {
+      alert("You cannot delete yourself.");
+      return;
+    }
+    if (confirm("Are you sure you want to delete this user?")) {
+      setUsers(users.filter(u => u.id !== userId));
+    }
   };
 
   const handleResetRiskStatus = () => {
@@ -384,6 +454,7 @@ const App = () => {
     setFilterFunction('ALL');
     setFilterStatus('ALL');
     setFilterScore('ALL');
+    setFilterLastReviewer('ALL');
     setSortOrder('newest');
     setSearchQuery('');
     setQuickFilter('ALL');
@@ -396,34 +467,76 @@ const App = () => {
     <div className="flex flex-col h-screen bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-100 font-sans w-full max-w-full overflow-hidden transition-colors duration-200">
       
       {/* Main Header + Nav */}
-      <header className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 shadow-sm z-10 shrink-0 transition-colors">
+      <header className="bg-[#283C50] border-b border-[#1f3041] shadow-md z-10 shrink-0 transition-colors">
         <div className="w-full px-6">
           <div className="flex items-center justify-between py-4">
              <div className="flex items-center gap-4">
-                {/* App Title Only - Logo Removed */}
-                <h1 className="font-bold text-xl tracking-tight text-slate-800 dark:text-white">Risk Management Tool</h1>
+                <img src="https://www.trident-energy.com/app/themes/trident-energy/dist/images/favicon.png?id=2e0b14e50770eab630923c46b052a708" alt="Logo" className="w-8 h-8 object-contain" />
+                <h1 className="font-bold text-xl tracking-tight text-white">Risk Management Tool</h1>
              </div>
              
              <div className="flex items-center gap-4">
+
+               {/* User Switcher for Testing */}
+               <div className="flex items-center gap-2 bg-black/20 p-1 rounded-lg border border-white/10 mr-2">
+                  <div className="p-1.5 bg-white/10 rounded-md">
+                    <UserIcon size={14} className="text-white" />
+                  </div>
+                  <select
+                    value={currentUser.id}
+                    onChange={(e) => {
+                      const selectedUser = users.find(u => u.id === e.target.value);
+                      if (selectedUser) setCurrentUser(selectedUser);
+                    }}
+                    className="bg-transparent text-xs font-bold text-slate-200 outline-none cursor-pointer border-none focus:ring-0 py-1 pr-1 max-w-[100px] sm:max-w-none"
+                    title="Switch User Identity"
+                  >
+                    {users.map(u => (
+                      <option key={u.id} value={u.id} className="text-slate-800">{u.name}</option>
+                    ))}
+                  </select>
+               </div>
+               
+               {/* Role Switcher for Testing */}
+               <div className="flex items-center gap-2 bg-black/20 p-1 rounded-lg border border-white/10 mr-2">
+                  <div className="p-1.5 bg-white/10 rounded-md">
+                    <Shield size={14} className="text-white" />
+                  </div>
+                  <select
+                    value={currentUser.role}
+                    onChange={(e) => setCurrentUser({...currentUser, role: e.target.value as UserRole})}
+                    className="bg-transparent text-xs font-bold text-slate-200 outline-none cursor-pointer border-none focus:ring-0 py-1 pr-1"
+                    title="Switch user role for testing permissions"
+                  >
+                    <option value="Manager" className="text-slate-800">Manager</option>
+                    <option value="RMIA" className="text-slate-800">RMIA (Admin)</option>
+                    <option value="Functional Manager" className="text-slate-800">Functional Manager</option>
+                    <option value="TEML Functional" className="text-slate-800">TEML Functional</option>
+                    <option value="Country Manager" className="text-slate-800">Country Manager</option>
+                    <option value="TEML Leadership Team" className="text-slate-800">TEML Leadership</option>
+                    <option value="CEO" className="text-slate-800">CEO</option>
+                  </select>
+               </div>
+
                {/* Dark Mode Toggle */}
                <button 
                   onClick={() => setIsDarkMode(!isDarkMode)}
-                  className="p-2 rounded-full text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="p-2 rounded-full text-slate-300 hover:bg-white/10 hover:text-white transition-colors focus:outline-none"
                   title={isDarkMode ? "Switch to Light Mode" : "Switch to Dark Mode"}
                >
                   {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
                </button>
 
-               <div className="flex items-center gap-3 px-4 py-1.5 bg-slate-100 dark:bg-slate-800 rounded-full border border-slate-200 dark:border-slate-700">
-                  <div className="w-8 h-8 rounded-full bg-slate-300 dark:bg-slate-600 flex items-center justify-center text-slate-600 dark:text-slate-200 font-medium">
+               <div className="flex items-center gap-3 px-4 py-1.5 bg-black/20 rounded-full border border-white/10">
+                  <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-white font-medium">
                     <UserIcon size={16} />
                   </div>
                   <div className="text-sm">
-                    <p className="font-bold text-slate-800 dark:text-slate-100 leading-none">{CURRENT_USER.name}</p>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 leading-none mt-1">{CURRENT_USER.role}</p>
+                    <p className="font-bold text-white leading-none">{currentUser.name}</p>
+                    <p className="text-xs text-slate-300 leading-none mt-1">{currentUser.role}</p>
                   </div>
                </div>
-               <button className="text-slate-400 hover:text-red-500 transition-colors p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full"><LogOut size={20} /></button>
+               <button className="text-slate-300 hover:text-white transition-colors p-2 hover:bg-white/10 rounded-full"><LogOut size={20} /></button>
              </div>
           </div>
 
@@ -446,6 +559,12 @@ const App = () => {
               label="Reports" 
               active={currentView === 'reports'} 
               onClick={() => setCurrentView('reports')} 
+            />
+             <NavItem 
+              icon={<BookOpen size={18} />} 
+              label="Help & Guide" 
+              active={currentView === 'help'} 
+              onClick={() => setCurrentView('help')} 
             />
             <NavItem 
               icon={<Settings size={18} />} 
@@ -471,7 +590,7 @@ const App = () => {
                 <div className="flex items-center gap-3 w-full md:w-auto overflow-x-auto pb-2 md:pb-0 scrollbar-thin">
                    <button 
                       onClick={() => setSelectedCountry('ALL')}
-                      className={`px-4 py-2 rounded-full text-sm font-bold transition-all whitespace-nowrap ${selectedCountry === 'ALL' ? 'bg-slate-800 text-white shadow-md dark:bg-blue-600' : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'}`}
+                      className={`px-4 py-2 rounded-full text-sm font-bold transition-all whitespace-nowrap ${selectedCountry === 'ALL' ? 'bg-[#283C50] text-white shadow-md' : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'}`}
                     >
                       All Locations
                     </button>
@@ -511,7 +630,7 @@ const App = () => {
                           onClick={() => setShowColumnMenu(!showColumnMenu)}
                           className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium shadow-sm transition-all whitespace-nowrap text-sm border relative ${
                              showColumnMenu 
-                               ? 'bg-blue-700 text-white border-blue-800' 
+                               ? 'bg-[#283C50] text-white border-[#1f3041]' 
                                : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-300 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700'
                           }`}
                         >
@@ -579,14 +698,14 @@ const App = () => {
               </div>
 
               {/* Bottom Row: Detailed Dropdown Filters */}
-              <div className="grid grid-cols-2 md:grid-cols-7 gap-3 pt-4 border-t border-slate-100 dark:border-slate-800">
+              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3 pt-4 border-t border-slate-100 dark:border-slate-800">
                   {/* Risk Owner */}
                   <select 
                     value={filterOwner} 
                     onChange={(e) => setFilterOwner(e.target.value)}
                     className="p-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-slate-50 dark:bg-slate-800 dark:text-slate-200 focus:bg-white dark:focus:bg-slate-700 focus:ring-2 focus:ring-blue-100 outline-none"
                   >
-                    <option value="ALL">All Owners</option>
+                    <option value="ALL">All Risk Owners</option>
                     {uniqueOwners.map(o => <option key={o} value={o}>{o}</option>)}
                   </select>
 
@@ -596,7 +715,7 @@ const App = () => {
                     onChange={(e) => setFilterRegister(e.target.value)}
                     className="p-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-slate-50 dark:bg-slate-800 dark:text-slate-200 focus:bg-white dark:focus:bg-slate-700 focus:ring-2 focus:ring-blue-100 outline-none"
                   >
-                    <option value="ALL">All Registers</option>
+                    <option value="ALL">All Risk Registers</option>
                     {uniqueRegisters.map(r => <option key={r} value={r}>{r}</option>)}
                   </select>
 
@@ -616,7 +735,7 @@ const App = () => {
                     onChange={(e) => setFilterStatus(e.target.value)}
                     className="p-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-slate-50 dark:bg-slate-800 dark:text-slate-200 focus:bg-white dark:focus:bg-slate-700 focus:ring-2 focus:ring-blue-100 outline-none"
                   >
-                    <option value="ALL">All Statuses</option>
+                    <option value="ALL">All Risk Status</option>
                     {Object.values(RiskStatus).map(s => <option key={s} value={s}>{s}</option>)}
                   </select>
 
@@ -626,18 +745,38 @@ const App = () => {
                     onChange={(e) => setFilterScore(e.target.value)}
                     className="p-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-slate-50 dark:bg-slate-800 dark:text-slate-200 focus:bg-white dark:focus:bg-slate-700 focus:ring-2 focus:ring-blue-100 outline-none"
                   >
-                    <option value="ALL">All Scores</option>
+                    <option value="ALL">Residual Score</option>
                     {Object.values(RiskLevel).map(l => <option key={l} value={l}>{l}</option>)}
                   </select>
 
-                  {/* Created Date Sort */}
+                   {/* Last Reviewer */}
+                   <select 
+                    value={filterLastReviewer} 
+                    onChange={(e) => setFilterLastReviewer(e.target.value)}
+                    className="p-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-slate-50 dark:bg-slate-800 dark:text-slate-200 focus:bg-white dark:focus:bg-slate-700 focus:ring-2 focus:ring-blue-100 outline-none"
+                  >
+                    <option value="ALL">Last Reviewers</option>
+                    {uniqueLastReviewers.map(r => <option key={r} value={r}>{r}</option>)}
+                  </select>
+
+                  {/* Sort Order */}
                   <select 
                     value={sortOrder} 
-                    onChange={(e) => setSortOrder(e.target.value as 'newest' | 'oldest')}
-                    className="p-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-slate-50 dark:bg-slate-800 dark:text-slate-200 focus:bg-white dark:focus:bg-slate-700 focus:ring-2 focus:ring-blue-100 outline-none"
+                    onChange={(e) => setSortOrder(e.target.value as SortOption)}
+                    className="p-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-slate-50 dark:bg-slate-800 dark:text-slate-200 focus:bg-white dark:focus:bg-slate-700 focus:ring-2 focus:ring-blue-100 outline-none font-medium"
                   >
                     <option value="newest">Newest First</option>
                     <option value="oldest">Oldest First</option>
+                    <option value="last_reviewed_newest">Last Reviewed (Newest First)</option>
+                    <option value="last_reviewed_oldest">Last Reviewed (Oldest First)</option>
+                    <option value="highest_residual">Highest Residual Score</option>
+                    <option value="lowest_risk">Lowest Risk Score</option>
+                    <option value="escalations">Escalations First</option>
+                    <option value="ownership">Ownership</option>
+                    <option value="function">Function / Department</option>
+                    <option value="last_reviewer_az">Last Reviewer (A–Z)</option>
+                    <option value="last_reviewer_za">Last Reviewer (Z–A)</option>
+                    <option value="newest_comments">Newest Comments</option>
                   </select>
 
                   {/* Clear Button */}
@@ -659,7 +798,7 @@ const App = () => {
               <RiskDashboard 
                 risks={dashboardRisks} 
                 escalatedCount={myEscalationsCount}
-                currentUser={CURRENT_USER}
+                currentUser={currentUser}
                 quickFilter={quickFilter}
                 onQuickFilterChange={setQuickFilter}
                 activeHeatMapFilter={dashboardHeatMapFilter}
@@ -671,7 +810,7 @@ const App = () => {
                 risks={listRisks}
                 actions={actions}
                 comments={comments}
-                currentUser={CURRENT_USER}
+                currentUser={currentUser}
                 onSelectRisk={(r) => {
                   setSelectedRisk(r);
                   setIsDetailOpen(true);
@@ -688,7 +827,7 @@ const App = () => {
                risks={dashboardRisks} // Pass filtered risks
                actions={actions}
                comments={comments}
-               currentUser={CURRENT_USER}
+               currentUser={currentUser}
                onSelectRisk={(r) => {
                  setSelectedRisk(r);
                  setIsDetailOpen(true);
@@ -724,6 +863,11 @@ const App = () => {
             </div>
           )}
 
+          {/* HELP / USER GUIDE VIEW */}
+          {currentView === 'help' && (
+             <UserGuide />
+          )}
+
           {/* ADMIN VIEW */}
           {currentView === 'admin' && (
             <div className="space-y-6 animate-fade-in">
@@ -745,7 +889,7 @@ const App = () => {
                      <AlertCircle className="text-orange-600 dark:text-orange-400 flex-shrink-0" size={20} />
                      <div className="space-y-3">
                         <p className="text-xs text-orange-800 dark:text-orange-300 font-medium">Warning: This action affects the entire organization and cannot be undone.</p>
-                        {CURRENT_USER.role === 'RMIA' ? (
+                        {currentUser.role === 'RMIA' ? (
                           <button 
                              onClick={handleResetRiskStatus}
                              className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white text-sm font-bold rounded-lg shadow-sm transition-colors w-full"
@@ -763,58 +907,12 @@ const App = () => {
               </div>
 
               {/* User Management */}
-              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-sm p-6 transition-colors">
-                <h2 className="text-xl font-bold text-slate-800 dark:text-white mb-2">User Management</h2>
-                <p className="text-slate-500 dark:text-slate-400 mb-6">Manage access permissions for Country Risk Registers.</p>
-
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse">
-                    <thead>
-                      <tr className="bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 text-xs uppercase text-slate-500 dark:text-slate-400 font-semibold tracking-wider">
-                        <th className="px-6 py-4">User</th>
-                        <th className="px-6 py-4">Role</th>
-                        <th className="px-6 py-4 text-center">Register BR</th>
-                        <th className="px-6 py-4 text-center">Register EG</th>
-                        <th className="px-6 py-4 text-center">Register CG</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                      {users.map(user => (
-                        <tr key={user.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
-                          <td className="px-6 py-4">
-                            <div className="flex items-center gap-3">
-                              <div className="w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center font-bold text-slate-600 dark:text-slate-300 text-xs">
-                                {user.name.charAt(0)}
-                              </div>
-                              <div>
-                                <div className="font-semibold text-slate-800 dark:text-slate-200 text-sm">{user.name}</div>
-                                <div className="text-xs text-slate-500 dark:text-slate-400">{user.email}</div>
-                              </div>
-                            </div>
-                          </td>
-                          <td className="px-6 py-4">
-                             <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300">
-                               {user.role}
-                             </span>
-                          </td>
-                          {GROUPS.map(group => (
-                            <td key={group.id} className="px-6 py-4 text-center">
-                              <label className="inline-flex items-center cursor-pointer">
-                                <input 
-                                  type="checkbox" 
-                                  className="w-4 h-4 text-blue-600 rounded border-slate-300 dark:border-slate-600 focus:ring-blue-500 dark:bg-slate-700"
-                                  checked={user.groups.includes(group.id)}
-                                  onChange={() => handleUserGroupChange(user.id, group.id)}
-                                />
-                              </label>
-                            </td>
-                          ))}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
+              <UserManagement 
+                users={users}
+                onAddUser={handleAddUser}
+                onUpdateUser={handleUpdateUser}
+                onDeleteUser={handleDeleteUser}
+              />
             </div>
           )}
 
@@ -825,7 +923,7 @@ const App = () => {
       {isDetailOpen && (
         <RiskDetail 
           risk={selectedRisk} 
-          currentUser={CURRENT_USER}
+          currentUser={currentUser}
           users={users}
           onClose={() => setIsDetailOpen(false)}
           onSave={handleSaveRisk}
@@ -837,6 +935,7 @@ const App = () => {
           comments={selectedRisk ? comments.filter(c => c.riskId === selectedRisk.id) : []}
           onAddComment={(txt, parentId) => selectedRisk && handleAddComment(selectedRisk.id, txt, parentId)}
           onDeleteComment={handleDeleteComment}
+          onLikeComment={handleLikeComment}
         />
       )}
 

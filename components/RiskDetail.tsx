@@ -1,9 +1,10 @@
 
+
 import React, { useState, useEffect, useRef } from 'react';
-import { Risk, ActionPlan, Comment, RiskStatus, ControlRating, RiskCategory, Country, User, AuditLogEntry, Attachment, EscalationLevel, EscalationEntry } from '../types';
+import { Risk, ActionPlan, Comment, RiskStatus, ControlRating, RiskCategory, Country, User, AuditLogEntry, Attachment, EscalationLevel, EscalationEntry, UserRole } from '../types';
 import { calculateRiskScore, getRiskLevel, COUNTRIES, IMPACT_OPTIONS, LIKELIHOOD_OPTIONS, PRINCIPAL_RISKS, RISK_REGISTER_DATA, ESCALATION_LEVELS } from '../constants';
 import { generateMitigationAdvice, improveRiskDescription } from '../services/geminiService';
-import { X, Save, MessageSquare, Plus, Sparkles, Calendar, ChevronDown, Trash2, Users, Search, AlertTriangle, Send, CornerDownRight, Edit2, History, Clock, User as UserIcon, Paperclip, FileText, Download, ShieldAlert, Shield, Check, Info, Lightbulb } from 'lucide-react';
+import { X, Save, MessageSquare, Plus, Sparkles, Calendar, ChevronDown, Trash2, Users, Search, AlertTriangle, Send, CornerDownRight, Edit2, History, Clock, User as UserIcon, Paperclip, FileText, Download, ShieldAlert, Shield, Check, Info, Lightbulb, AlertCircle, ArrowDown, Activity, CheckCircle, Target, UserCheck, Briefcase, ThumbsUp } from 'lucide-react';
 
 interface Props {
   risk: Risk | null; // null means 'New Risk'
@@ -19,23 +20,115 @@ interface Props {
   comments: Comment[];
   onAddComment: (text: string, parentId?: string) => void;
   onDeleteComment: (commentId: string) => void;
+  onLikeComment: (commentId: string) => void;
 }
+
+// Definitions for inline help
+const IMPACT_DEFINITIONS: Record<number, string> = {
+  1: "Minimal financial impact (<$10k) or minor injury.",
+  2: "Minor disruption, first aid injury.",
+  3: "Moderate financial loss, medical treatment required.",
+  4: "Major operational loss, serious injury/disability.",
+  5: "Critical failure, fatality, or massive financial loss."
+};
+
+const LIKELIHOOD_DEFINITIONS: Record<number, string> = {
+  1: "Once in 20+ years (<5%).",
+  2: "Once in 10 years (5-20%).",
+  3: "Once in 1-5 years (20-40%).",
+  4: "Occurs annually (40-75%).",
+  5: "Occurs monthly/quarterly (>75%)."
+};
+
+// Helper: Guidance Tooltip Component
+// Updated with custom color #325A78 and scoped group-hover
+const GuidanceTooltip = ({ title, content, placement = 'top' }: { title: string, content: React.ReactNode, placement?: 'top' | 'right' | 'left' }) => {
+  // Base classes for the tooltip container with custom color
+  const baseClasses = "absolute w-64 p-3 bg-[#325A78] text-white text-xs rounded-xl shadow-xl opacity-0 group-hover/tooltip:opacity-100 transition-opacity pointer-events-none z-[100] border border-[#26445a]";
+  
+  // Position specific classes
+  let posClasses = "";
+  let arrowClasses = "";
+  
+  switch(placement) {
+    case 'right':
+      posClasses = "left-full top-1/2 -translate-y-1/2 ml-2.5";
+      arrowClasses = "top-1/2 -left-1 -translate-y-1/2 border-l border-b"; // Rotated 45deg to point left
+      break;
+    case 'left':
+      posClasses = "right-full top-1/2 -translate-y-1/2 mr-2.5";
+      arrowClasses = "top-1/2 -right-1 -translate-y-1/2 border-r border-t"; // Rotated 45deg to point right
+      break;
+    case 'top':
+    default:
+      posClasses = "bottom-full left-1/2 -translate-x-1/2 mb-2.5";
+      arrowClasses = "bottom-0 left-1/2 -mb-1 -translate-x-1/2 border-r border-b"; // Rotated to point down
+      break;
+  }
+
+  return (
+    <div className="group/tooltip relative inline-flex items-center ml-1.5 align-middle z-20">
+      <Info size={13} className="text-slate-400 hover:text-blue-500 cursor-help transition-colors" />
+      <div className={`${baseClasses} ${posClasses}`}>
+         <div className="font-bold mb-1 text-white border-b border-[#4a7291] pb-1">{title}</div>
+         <div className="leading-relaxed text-slate-100">{content}</div>
+         {/* Arrow with matching custom color */}
+         <div className={`absolute w-2 h-2 bg-[#325A78] border-[#26445a] rotate-45 ${arrowClasses}`}></div>
+      </div>
+    </div>
+  );
+};
+
+// Guidance Content Constants
+const GUIDANCE_IMPACT = (
+  <ul className="list-none space-y-1">
+    <li><strong className="text-white">1 - Negligible:</strong> Minimal financial impact (&lt;$10k) or minor injury.</li>
+    <li><strong className="text-white">2 - Marginal:</strong> Minor disruption, first aid injury.</li>
+    <li><strong className="text-white">3 - Average:</strong> Moderate financial loss, medical treatment required.</li>
+    <li><strong className="text-white">4 - Severe:</strong> Major operational loss, serious injury/disability.</li>
+    <li><strong className="text-white">5 - Catastrophic:</strong> Critical failure, fatality, or massive financial loss.</li>
+  </ul>
+);
+
+const GUIDANCE_LIKELIHOOD = (
+  <ul className="list-none space-y-1">
+    <li><strong className="text-white">1 - Extremely Remote:</strong> Once in 20+ years (&lt;5%).</li>
+    <li><strong className="text-white">2 - Remote:</strong> Once in 10 years (5-20%).</li>
+    <li><strong className="text-white">3 - Unlikely:</strong> Once in 1-5 years (20-40%).</li>
+    <li><strong className="text-white">4 - Likely:</strong> Occurs annually (40-75%).</li>
+    <li><strong className="text-white">5 - Very Likely:</strong> Occurs monthly/quarterly (&gt;75%).</li>
+  </ul>
+);
+
+const GUIDANCE_CONTROLS = (
+  <ul className="list-none space-y-1">
+    <li><strong className="text-white">Excellent:</strong> Controls are robust, documented, and tested regularly.</li>
+    <li><strong className="text-white">Good:</strong> Controls are effective but may have minor documentation gaps.</li>
+    <li><strong className="text-white">Fair:</strong> Controls exist but effectiveness is inconsistent.</li>
+    <li><strong className="text-white">Poor:</strong> Controls are weak or largely manual/unreliable.</li>
+    <li><strong className="text-white">Unsatisfactory:</strong> No effective controls in place.</li>
+  </ul>
+);
 
 // Helper to render a single comment thread item
 interface CommentItemProps {
   comment: Comment;
   allComments: Comment[];
   currentUser: User;
+  users: User[]; // Passed down to lookup roles
   onDelete: (id: string) => void;
   onReply: (text: string, parentId: string) => void;
+  onLike: (id: string) => void;
 }
 
 const CommentItem: React.FC<CommentItemProps> = ({ 
   comment, 
   allComments, 
   currentUser, 
+  users,
   onDelete, 
-  onReply 
+  onReply,
+  onLike
 }) => {
   const [showReplyBox, setShowReplyBox] = useState(false);
   const [replyText, setReplyText] = useState('');
@@ -43,18 +136,50 @@ const CommentItem: React.FC<CommentItemProps> = ({
   // Find children
   const children = allComments.filter(c => c.parentId === comment.id).sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
+  // Find the role of the commenter
+  const commenter = users.find(u => u.id === comment.userId);
+  const commenterRole = commenter ? commenter.role : 'Unknown';
+
+  // Likes logic
+  const likes = comment.likes || [];
+  const isLiked = likes.includes(currentUser.id);
+  const likeCount = likes.length;
+
+  const getRoleBadgeStyle = (role: string) => {
+    if (role === 'RMIA') return 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300 border-purple-200 dark:border-purple-800';
+    if (role === 'CEO' || role === 'Country Manager') return 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300 border-orange-200 dark:border-orange-800';
+    return 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-600';
+  };
+
+  // Get names of likers for tooltip
+  const likerNames = likes.map(id => users.find(u => u.id === id)?.name || 'Unknown').join(', ');
+
   return (
-    <div className="flex flex-col gap-2">
-      <div className="flex gap-4 group">
-        <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center font-bold text-sm text-blue-700 dark:text-blue-300 border-2 border-white dark:border-slate-700 shadow-sm flex-shrink-0">
-          {comment.userName.charAt(0)}
+    <div className="flex flex-col gap-2 animate-fade-in">
+      <div className="flex gap-3 group">
+        <div className="flex flex-col items-center">
+          <div className="w-10 h-10 rounded-full bg-white dark:bg-slate-800 flex items-center justify-center font-bold text-sm text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 shadow-sm z-10">
+            {comment.userName.charAt(0)}
+          </div>
+          {children.length > 0 && <div className="w-px flex-1 bg-slate-200 dark:bg-slate-700 my-1"></div>}
         </div>
+        
         <div className="flex-1">
-          <div className="bg-white dark:bg-slate-800 p-4 rounded-2xl rounded-tl-none border border-slate-200 dark:border-slate-700 shadow-sm group-hover:shadow-md transition-shadow relative">
-            <div className="flex justify-between items-center mb-2">
-              <span className="font-bold text-sm text-slate-800 dark:text-slate-200">{comment.userName}</span>
+          <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm relative">
+            {/* Header: Name, Role, Date */}
+            <div className="flex justify-between items-start mb-2">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
+                <span className="font-bold text-sm text-slate-800 dark:text-slate-200">{comment.userName}</span>
+                
+                {/* ROLE BADGE */}
+                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border ${getRoleBadgeStyle(commenterRole)}`}>
+                  {commenterRole === 'RMIA' && <Shield size={10} />}
+                  {commenterRole}
+                </span>
+              </div>
+
               <div className="flex items-center gap-3">
-                <span className="text-xs text-slate-400 font-medium">{new Date(comment.date).toLocaleDateString()}</span>
+                <span className="text-xs text-slate-400 font-medium">{new Date(comment.date).toLocaleString()}</span>
                 {(comment.userId === currentUser.id || currentUser.role === 'RMIA') && (
                   <button 
                     onClick={() => onDelete(comment.id)}
@@ -66,13 +191,35 @@ const CommentItem: React.FC<CommentItemProps> = ({
                 )}
               </div>
             </div>
-            <p className="text-slate-700 dark:text-slate-300 leading-relaxed text-sm">{comment.text}</p>
+
+            {/* Content */}
+            <p className="text-slate-700 dark:text-slate-300 leading-relaxed text-sm whitespace-pre-wrap">{comment.text}</p>
             
             {/* Action Bar */}
-            <div className="mt-2 pt-2 border-t border-slate-100 dark:border-slate-700/50 flex gap-4">
+            <div className="mt-3 flex gap-4 items-center">
+               <button 
+                 onClick={() => onLike(comment.id)}
+                 className={`flex items-center gap-1.5 text-xs font-bold transition-colors group/like relative ${isLiked ? 'text-blue-600 dark:text-blue-400' : 'text-slate-500 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400'}`}
+               >
+                 <ThumbsUp size={14} className={isLiked ? 'fill-current' : ''} />
+                 {likeCount > 0 ? (
+                    <span>{likeCount}</span>
+                 ) : (
+                    <span>Like</span>
+                 )}
+                 
+                 {/* Tooltip for likers */}
+                 {likeCount > 0 && (
+                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1.5 bg-slate-800 text-white text-[10px] rounded opacity-0 group-hover/like:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50 shadow-lg border border-slate-700">
+                       <span className="font-semibold text-slate-300 mr-1">Liked by:</span> {likerNames}
+                       <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-1 w-2 h-2 bg-slate-800 border-r border-b border-slate-700 rotate-45"></div>
+                    </div>
+                 )}
+               </button>
+
                <button 
                  onClick={() => setShowReplyBox(!showReplyBox)}
-                 className="flex items-center gap-1 text-xs font-semibold text-slate-500 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+                 className="flex items-center gap-1 text-xs font-bold text-slate-500 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
                >
                  <CornerDownRight size={12} />
                  Reply
@@ -82,7 +229,7 @@ const CommentItem: React.FC<CommentItemProps> = ({
 
           {/* Reply Input Box */}
           {showReplyBox && (
-            <div className="mt-2 ml-2 flex gap-3 animate-fade-in">
+            <div className="mt-3 flex gap-3 animate-fade-in pl-2">
                <div className="w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-xs font-bold text-slate-500 dark:text-slate-400 flex-shrink-0">
                   {currentUser.name.charAt(0)}
                </div>
@@ -92,7 +239,7 @@ const CommentItem: React.FC<CommentItemProps> = ({
                     value={replyText}
                     onChange={(e) => setReplyText(e.target.value)}
                     placeholder="Write a reply..."
-                    className="flex-1 px-3 py-1.5 text-sm border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white dark:bg-slate-800 dark:text-white"
+                    className="flex-1 px-3 py-2 text-sm border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white dark:bg-slate-800 dark:text-white"
                     autoFocus
                   />
                   <button 
@@ -103,9 +250,9 @@ const CommentItem: React.FC<CommentItemProps> = ({
                         setShowReplyBox(false);
                       }
                     }}
-                    className="p-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                    className="p-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
                   >
-                    <Send size={14} />
+                    <Send size={16} />
                   </button>
                </div>
             </div>
@@ -115,23 +262,18 @@ const CommentItem: React.FC<CommentItemProps> = ({
 
       {/* Nested Children */}
       {children.length > 0 && (
-        <div className="pl-12 flex flex-col gap-3 relative">
-           {/* Visual Thread Line */}
-           <div className="absolute left-5 top-0 bottom-4 w-px bg-slate-200 dark:bg-slate-700"></div>
-           
+        <div className="pl-12 flex flex-col gap-3">
            {children.map(child => (
-             <div key={child.id} className="relative">
-                {/* Visual Curve */}
-                <div className="absolute -left-7 top-5 w-7 h-px bg-slate-200 dark:bg-slate-700"></div>
-                
-                <CommentItem 
-                  comment={child} 
-                  allComments={allComments} 
-                  currentUser={currentUser} 
-                  onDelete={onDelete} 
-                  onReply={onReply}
-                />
-             </div>
+             <CommentItem 
+               key={child.id}
+               comment={child} 
+               allComments={allComments} 
+               currentUser={currentUser} 
+               users={users}
+               onDelete={onDelete} 
+               onReply={onReply}
+               onLike={onLike}
+             />
            ))}
         </div>
       )}
@@ -139,7 +281,7 @@ const CommentItem: React.FC<CommentItemProps> = ({
   );
 };
 
-const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave, onDelete, actions, onAddAction, onUpdateAction, onDeleteAction, comments, onAddComment, onDeleteComment }) => {
+const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave, onDelete, actions, onAddAction, onUpdateAction, onDeleteAction, comments, onAddComment, onDeleteComment, onLikeComment }) => {
   // Local state for the form
   const [formData, setFormData] = useState<Risk>({
     id: `R-NEW-${Math.floor(Math.random()*1000)}`,
@@ -171,6 +313,7 @@ const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave
   // Updated state to hold object with feedback
   const [aiDescriptionSuggestion, setAiDescriptionSuggestion] = useState<{text: string, feedback: string} | null>(null);
   const [aiControlsSuggestion, setAiControlsSuggestion] = useState<{text: string, feedback: string} | null>(null);
+  const [validationError, setValidationError] = useState<string | null>(null);
   
   const [newComment, setNewComment] = useState('');
   const [activeTab, setActiveTab] = useState<'details' | 'actions' | 'comments' | 'escalation' | 'history'>('details');
@@ -181,26 +324,27 @@ const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave
   const [collaboratorSearch, setCollaboratorSearch] = useState('');
   const [showCollaboratorList, setShowCollaboratorList] = useState(false);
 
-  // Escalation Autocomplete State
-  const [escalationSearch, setEscalationSearch] = useState('');
-  const [showEscalationList, setShowEscalationList] = useState<{level: string, show: boolean} | null>(null);
-
   // Risk Owner Autocomplete State
   const [showOwnerList, setShowOwnerList] = useState(false);
   
+  // Action Owner Autocomplete State
+  const [showActionOwnerList, setShowActionOwnerList] = useState(false);
+  const [showEditActionOwnerList, setShowEditActionOwnerList] = useState(false);
+
   // Delete Confirmation State
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
+  // Escalation Tab State (Admin Feature)
+  const [escalationSearch, setEscalationSearch] = useState('');
+  const [activeEscalationLevel, setActiveEscalationLevel] = useState<EscalationLevel | null>(null);
+
   // Permission Logic
-  // RMIA (Admin) can edit everything.
-  // Owner can edit their own risk.
-  // Others (Collaborators, Escalated) are Read-Only (but can comment).
   const isNewRisk = !risk;
   const isOwner = risk ? risk.owner === currentUser.name : true; // Creator is owner
   const isAdmin = currentUser.role === 'RMIA';
   
   const canEdit = isNewRisk || isAdmin || isOwner;
-  const canDelete = isAdmin; // Only Admins can delete risks
+  const canDelete = isAdmin; // STRICT: Only Admins (RMIA) can delete risks
 
   // Action Plan Form State (Create)
   const [showActionForm, setShowActionForm] = useState(false);
@@ -229,8 +373,6 @@ const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave
   }, []);
 
   // Initialize form if editing
-  // NOTE: This logic was updated to prevent overwriting unsaved form changes when
-  // background updates (like audit logs from comments/actions) modify the 'risk' prop.
   useEffect(() => {
     if (risk) {
       setFormData(prev => {
@@ -262,6 +404,8 @@ const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave
       
       return newData;
     });
+    // Clear validation error if any
+    if (validationError) setValidationError(null);
   };
   
   const handleRegisterChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -275,16 +419,19 @@ const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave
         register: selectedRegister,
         functionArea: associatedFunction // Auto-select the function
     }));
+    if (validationError) setValidationError(null);
   };
 
   const handleNumberChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: parseInt(value) }));
+    if (validationError) setValidationError(null);
   };
 
   const handleCountrySelect = (c: Country) => {
     setFormData(prev => ({ ...prev, country: c }));
     setCountryOpen(false);
+    if (validationError) setValidationError(null);
   };
 
   const handleAddCollaborator = (name: string) => {
@@ -299,31 +446,71 @@ const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave
     setFormData(prev => ({ ...prev, collaborators: prev.collaborators.filter(c => c !== name) }));
   };
 
-  // Escalation Handlers
-  const handleAddEscalation = (level: EscalationLevel, user: User) => {
-    const newEntry: EscalationEntry = {
-      level,
-      userId: user.id,
-      userName: user.name,
-      date: new Date().toISOString()
-    };
-    
-    // Check duplication
-    const exists = formData.escalations?.some(e => e.level === level && e.userId === user.id);
-    if (!exists) {
-      setFormData(prev => ({
-        ...prev,
-        escalations: [...(prev.escalations || []), newEntry]
-      }));
-    }
-    setEscalationSearch('');
-    setShowEscalationList(null);
+  // --- Escalation Logic with Checkbox & Admin Overrides ---
+
+  // Helper: Find the "default" user for a given escalation level
+  const getDefaultUserForLevel = (level: EscalationLevel): User | undefined => {
+     let targetRole: UserRole | string = '';
+     
+     if (level === EscalationLevel.FUNCTIONAL_MANAGER) targetRole = 'Functional Manager';
+     if (level === EscalationLevel.TEML_FUNCTIONAL_REVIEW) targetRole = 'TEML Functional';
+     if (level === EscalationLevel.TEML_LEADERSHIP) targetRole = 'TEML Leadership Team';
+     if (level === EscalationLevel.COUNTRY_MANAGER) targetRole = 'Country Manager';
+     if (level === EscalationLevel.CORPORATE_RISK) targetRole = 'CEO'; // Or RMIA
+
+     // Simple search - find first user with that role
+     // In a real app, might filter by country too
+     return users.find(u => u.role === targetRole || u.groups.includes(level));
   };
 
-  const handleRemoveEscalation = (level: EscalationLevel, userId: string) => {
+  const handleToggleEscalation = (level: EscalationLevel, isChecked: boolean) => {
+    if (isChecked) {
+      // Add Escalation (Default User)
+      const defaultUser = getDefaultUserForLevel(level);
+      
+      if (defaultUser) {
+        const newEntry: EscalationEntry = {
+           level,
+           userId: defaultUser.id,
+           userName: defaultUser.name,
+           date: new Date().toISOString()
+        };
+        setFormData(prev => ({
+           ...prev,
+           escalations: [...(prev.escalations || []), newEntry]
+        }));
+      } else {
+        alert("No user found with the appropriate role to auto-populate this escalation.");
+      }
+
+    } else {
+      // Remove ALL Escalations for this level (Simple toggle behavior)
+      setFormData(prev => ({
+         ...prev,
+         escalations: (prev.escalations || []).filter(e => e.level !== level)
+      }));
+    }
+  };
+
+  const handleAddEscalationUser = (user: User, level: EscalationLevel) => {
+     const newEntry: EscalationEntry = {
+        level,
+        userId: user.id,
+        userName: user.name,
+        date: new Date().toISOString()
+     };
      setFormData(prev => ({
         ...prev,
-        escalations: (prev.escalations || []).filter(e => !(e.level === level && e.userId === userId))
+        escalations: [...(prev.escalations || []), newEntry]
+     }));
+     setActiveEscalationLevel(null);
+     setEscalationSearch('');
+  };
+
+  const handleRemoveEscalationUser = (userId: string, level: EscalationLevel) => {
+     setFormData(prev => ({
+        ...prev,
+        escalations: (prev.escalations || []).filter(e => !(e.userId === userId && e.level === level))
      }));
   };
 
@@ -452,6 +639,15 @@ const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave
 
   // --- Audit Trail Logic (For Form Fields) ---
   const handleSaveWithAudit = () => {
+    // SCORING VALIDATION
+    const inherentScore = calculateRiskScore(formData.inherentImpact, formData.inherentLikelihood);
+    const residualScore = calculateRiskScore(formData.residualImpact, formData.residualLikelihood);
+
+    if (residualScore > inherentScore) {
+      setValidationError("Please correct risk scoring");
+      return;
+    }
+
     const newHistory: AuditLogEntry[] = [...(formData.history || [])];
     const timestamp = new Date().toISOString();
     
@@ -566,11 +762,19 @@ const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave
             <h2 className="text-2xl font-bold text-slate-800 dark:text-white">{risk ? 'Edit Risk' : 'Create New Risk'}</h2>
           </div>
           <div className="flex items-center gap-3">
+             {validationError && (
+                <div className="flex items-center gap-2 text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 px-4 py-2 rounded-lg border border-red-200 dark:border-red-800 animate-pulse">
+                  <AlertCircle size={18} />
+                  <span className="text-sm font-bold">{validationError}</span>
+                </div>
+             )}
+
+             {/* STRICT CHECK: ONLY RMIA CAN DELETE RISKS */}
              {canDelete && (
                 <button 
                   onClick={() => setShowDeleteConfirm(true)}
                   className="p-2 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors mr-2 border border-red-200 dark:border-red-800"
-                  title="Delete Risk"
+                  title="Delete Risk (Admin Only)"
                 >
                   <Trash2 size={20} />
                 </button>
@@ -612,1073 +816,1010 @@ const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave
           ))}
         </div>
 
-        {/* Content */}
-        <div className="flex-1 overflow-y-auto p-8 bg-slate-50/30 dark:bg-slate-950/30">
+        <div className="flex-1 overflow-y-auto bg-white dark:bg-slate-900 p-6 md:p-8">
           
-          {/* RISK DETAILS TAB (Merged) */}
+          {/* Details Tab */}
           {activeTab === 'details' && (
-            <div className="space-y-8 max-w-[95%] lg:max-w-7xl mx-auto">
-              
-              {/* Section 1: Context */}
-              <div className="bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm transition-colors">
-                <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4 border-b dark:border-slate-800 pb-2">Context & Identification</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  
-                  {/* Title */}
-                  <div className="col-span-1 md:col-span-2 space-y-1.5">
-                    <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">Key Business Risk Title <span className="text-red-500">*</span></label>
-                    <input 
-                      disabled={!canEdit}
-                      type="text" name="title" value={formData.title} onChange={handleInputChange}
-                      className="w-full p-2.5 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-medium bg-white dark:bg-slate-800 dark:text-white disabled:bg-slate-50 disabled:dark:bg-slate-900 disabled:text-slate-500"
-                      placeholder="e.g., Export Oil Line Failure"
-                    />
+            <div className="space-y-8 animate-fade-in max-w-7xl mx-auto">
+               {/* SECTION 1: IDENTIFICATION */}
+               <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
+                  <div className="px-6 py-3 bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 flex items-center gap-2 rounded-t-xl">
+                     <FileText size={18} className="text-blue-600 dark:text-blue-400" />
+                     <h3 className="font-bold text-slate-800 dark:text-slate-200 text-sm uppercase tracking-wide">1. Risk Identification</h3>
                   </div>
-
-                  {/* Creation Date (Read Only) */}
-                  <div className="space-y-1.5">
-                     <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">Creation Date</label>
-                     <div className="w-full p-2.5 border border-slate-200 dark:border-slate-700 rounded-lg bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400 text-sm">
-                        {formData.creationDate}
-                     </div>
-                  </div>
-
-                  {/* Country (Custom Dropdown) */}
-                  <div className="space-y-1.5" ref={countryRef}>
-                    <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">Country <span className="text-red-500">*</span></label>
-                    <div className="relative">
-                      <button 
-                        type="button"
+                  <div className="p-6 space-y-6">
+                    {/* Title */}
+                    <div>
+                      <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">
+                         Risk Title <span className="text-red-500">*</span>
+                         <GuidanceTooltip title="Risk Title Guidelines" content="Clear, concise name for the risk event. Avoid generic terms like 'IT Risk'. Example: 'Data breach via phishing attack'." placement="right" />
+                      </label>
+                      <input 
+                        type="text" 
+                        name="title"
+                        value={formData.title}
+                        onChange={handleInputChange}
                         disabled={!canEdit}
-                        onClick={() => canEdit && setCountryOpen(!countryOpen)}
-                        className="w-full p-2.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-left flex items-center justify-between hover:border-blue-400 focus:ring-2 focus:ring-blue-200 disabled:bg-slate-50 disabled:dark:bg-slate-900 disabled:text-slate-500 disabled:cursor-not-allowed"
-                      >
-                        <div className="flex items-center gap-2">
-                           {selectedCountry ? (
-                             <>
-                               <img src={selectedCountry.flagUrl} alt="" className="w-6 h-6 rounded-full object-cover border border-slate-100 dark:border-slate-700" />
-                               <span className="text-slate-700 dark:text-slate-200 font-medium">{selectedCountry.label}</span>
-                             </>
-                           ) : <span className="text-slate-400">Select Country</span>}
-                        </div>
-                        <ChevronDown size={16} className="text-slate-400" />
-                      </button>
-                      
-                      {countryOpen && (
-                        <div className="absolute top-full left-0 w-full mt-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-xl z-50 overflow-hidden">
-                          {COUNTRIES.map(c => (
-                            <button
-                              key={c.code}
-                              onClick={() => handleCountrySelect(c.code)}
-                              className="w-full flex items-center gap-3 px-4 py-2 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors text-left"
-                            >
-                               <img src={c.flagUrl} alt="" className="w-6 h-6 rounded-full object-cover border border-slate-100 dark:border-slate-700" />
-                               <span className="text-slate-700 dark:text-slate-200">{c.label}</span>
-                            </button>
-                          ))}
-                        </div>
-                      )}
+                        className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white dark:bg-slate-800 dark:text-white transition-colors"
+                        placeholder="E.g. Supply Chain Failure"
+                      />
                     </div>
-                  </div>
 
-                  {/* Register Dropdown */}
-                  <div className="space-y-1.5">
-                    <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">Risk Register <span className="text-red-500">*</span></label>
-                    <select 
-                      disabled={!canEdit}
-                      name="register" 
-                      value={formData.register} 
-                      onChange={handleRegisterChange}
-                      className="w-full p-2.5 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 disabled:bg-slate-50 disabled:dark:bg-slate-900 disabled:text-slate-500"
-                    >
-                      <option value="">Select Register</option>
-                      {RISK_REGISTER_DATA.map(r => (
-                        <option key={r.register} value={r.register}>{r.register}</option>
-                      ))}
-                    </select>
-                  </div>
+                    {/* Metadata Grid */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                       {/* Country */}
+                       <div>
+                          <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Country</label>
+                          <div className="relative" ref={countryRef}>
+                             <button 
+                                type="button"
+                                disabled={!canEdit}
+                                onClick={() => setCountryOpen(!countryOpen)}
+                                className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 dark:text-white flex items-center justify-between"
+                             >
+                                <span className="flex items-center gap-2">
+                                   {selectedCountry && <img src={selectedCountry.flagUrl} alt="" className="w-5 h-5 rounded-full object-cover" />}
+                                   {selectedCountry?.label || formData.country}
+                                </span>
+                                <ChevronDown size={16} />
+                             </button>
+                             {countryOpen && (
+                                <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl z-20 overflow-hidden">
+                                   {COUNTRIES.map(c => (
+                                      <button 
+                                        key={c.code}
+                                        onClick={() => handleCountrySelect(c.code as Country)}
+                                        className="w-full px-4 py-3 flex items-center gap-3 hover:bg-slate-50 dark:hover:bg-slate-800 text-left text-sm text-slate-700 dark:text-slate-200"
+                                      >
+                                         <img src={c.flagUrl} alt="" className="w-6 h-6 rounded-full object-cover" />
+                                         {c.label}
+                                      </button>
+                                   ))}
+                                </div>
+                             )}
+                          </div>
+                       </div>
 
-                  {/* Risk Owner (Autocomplete) */}
-                  <div className="space-y-1.5 relative">
-                    <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">Risk Owner</label>
-                    <div className="relative">
-                       <input 
-                         disabled={!canEdit}
-                         type="text" 
-                         name="owner" 
-                         value={formData.owner} 
-                         onChange={(e) => {
-                           handleInputChange(e);
-                           setShowOwnerList(true);
-                         }}
-                         onFocus={() => setShowOwnerList(true)}
-                         onBlur={() => setTimeout(() => setShowOwnerList(false), 200)}
-                         className="w-full p-2.5 border border-slate-300 dark:border-slate-700 rounded-lg disabled:bg-slate-50 disabled:dark:bg-slate-900 disabled:text-slate-500 focus:ring-2 focus:ring-blue-100 focus:border-blue-400 bg-white dark:bg-slate-800 dark:text-white"
-                         autoComplete="off"
-                       />
-                       {showOwnerList && canEdit && (
-                         <div className="absolute top-full left-0 w-full mt-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-xl z-20 max-h-48 overflow-y-auto">
-                           {users.filter(u => u.name.toLowerCase().includes(formData.owner.toLowerCase())).length > 0 ? (
-                             users.filter(u => u.name.toLowerCase().includes(formData.owner.toLowerCase())).map(u => (
-                               <button 
-                                 key={u.id}
-                                 onClick={() => {
-                                   setFormData(prev => ({ ...prev, owner: u.name }));
-                                   setShowOwnerList(false);
-                                 }}
-                                 className="w-full text-left px-4 py-2 text-sm hover:bg-blue-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 flex items-center gap-2 transition-colors border-b border-slate-50 dark:border-slate-700 last:border-0"
-                               >
-                                 <div className="w-6 h-6 rounded-full bg-slate-200 dark:bg-slate-600 flex items-center justify-center text-xs font-bold text-slate-600 dark:text-slate-200 shrink-0">{u.name.charAt(0)}</div>
-                                 <span className="truncate">{u.name}</span>
-                               </button>
-                             ))
-                           ) : (
-                             <div className="px-4 py-3 text-xs text-slate-400 italic text-center">No matching users found</div>
-                           )}
-                         </div>
-                       )}
+                       {/* Risk Owner */}
+                       <div>
+                          <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Risk Owner</label>
+                          <div className="relative">
+                             <input 
+                               type="text" 
+                               name="owner"
+                               value={formData.owner}
+                               onChange={(e) => {
+                                 handleInputChange(e);
+                                 setShowOwnerList(true);
+                               }}
+                               onFocus={() => setShowOwnerList(true)}
+                               onBlur={() => setTimeout(() => setShowOwnerList(false), 200)}
+                               disabled={!canEdit}
+                               className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white dark:bg-slate-800 dark:text-white"
+                             />
+                             {showOwnerList && canEdit && (
+                               <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg shadow-xl z-20 max-h-48 overflow-y-auto">
+                                  {users.filter(u => u.name.toLowerCase().includes(formData.owner.toLowerCase())).map(u => (
+                                     <button 
+                                       key={u.id}
+                                       onClick={() => setFormData(prev => ({...prev, owner: u.name}))}
+                                       className="w-full text-left px-4 py-2 hover:bg-slate-50 dark:hover:bg-slate-800 text-sm text-slate-700 dark:text-slate-200"
+                                     >
+                                       {u.name}
+                                     </button>
+                                  ))}
+                               </div>
+                             )}
+                          </div>
+                       </div>
+
+                       {/* Risk Register */}
+                       <div>
+                         <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Risk Register</label>
+                         <select 
+                           name="register"
+                           value={formData.register}
+                           onChange={handleRegisterChange}
+                           disabled={!canEdit}
+                           className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white dark:bg-slate-800 dark:text-white"
+                         >
+                            {RISK_REGISTER_DATA.map(r => (
+                              <option key={r.register} value={r.register}>{r.register}</option>
+                            ))}
+                         </select>
+                       </div>
+
+                       {/* Function/Area */}
+                       <div>
+                          <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Function/Area</label>
+                          <select 
+                            name="functionArea"
+                            value={formData.functionArea}
+                            onChange={handleInputChange}
+                            disabled={!canEdit}
+                            className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white dark:bg-slate-800 dark:text-white"
+                          >
+                             {availableFunctions.map(f => <option key={f} value={f}>{f}</option>)}
+                          </select>
+                       </div>
+
+                       {/* Category */}
+                       <div>
+                          <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Category</label>
+                          <select 
+                            name="category"
+                            value={formData.category}
+                            onChange={handleInputChange}
+                            disabled={!canEdit}
+                            className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white dark:bg-slate-800 dark:text-white"
+                          >
+                             {Object.values(RiskCategory).map(c => <option key={c} value={c}>{c}</option>)}
+                          </select>
+                       </div>
                     </div>
-                  </div>
 
-                  {/* Function/Area Dropdown (Cascaded) */}
-                  <div className="space-y-1.5">
-                    <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">Function/Area</label>
-                    <select 
-                      disabled={!canEdit || availableFunctions.length <= 1}
-                      name="functionArea" 
-                      value={formData.functionArea} 
-                      onChange={handleInputChange}
-                      className="w-full p-2.5 border border-slate-300 dark:border-slate-700 rounded-lg bg-slate-50 dark:bg-slate-800 dark:text-slate-300 disabled:bg-slate-100 disabled:dark:bg-slate-900 disabled:text-slate-500"
-                    >
-                      {availableFunctions.map(f => (
-                        <option key={f} value={f}>{f}</option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {/* Category */}
-                  <div className="space-y-1.5">
-                    <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">Risk Category <span className="text-red-500">*</span></label>
-                    <select 
-                      disabled={!canEdit}
-                      name="category" value={formData.category} onChange={handleInputChange}
-                      className="w-full p-2.5 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 disabled:bg-slate-50 disabled:dark:bg-slate-900 disabled:text-slate-500"
-                    >
-                      {Object.values(RiskCategory).map(v => <option key={v} value={v}>{v}</option>)}
-                    </select>
-                  </div>
-
-                  {/* Principal Risk */}
-                  <div className="space-y-1.5 col-span-1 md:col-span-1">
-                     <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">Principal Risk <span className="text-red-500">*</span></label>
-                     <select 
-                        disabled={!canEdit}
-                        name="groupPrincipalRisk" value={formData.groupPrincipalRisk} onChange={handleInputChange}
-                        className="w-full p-2.5 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 disabled:bg-slate-50 disabled:dark:bg-slate-900 disabled:text-slate-500"
-                      >
-                        {PRINCIPAL_RISKS.map(v => <option key={v} value={v}>{v}</option>)}
-                      </select>
-                  </div>
-
-                  {/* Description */}
-                  <div className="col-span-1 md:col-span-2 space-y-1.5">
-                    <div className="flex justify-between items-center">
-                      <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">Risk Description</label>
-                      {canEdit && !aiDescriptionSuggestion && (
-                        <button 
-                          onClick={handleAIDescriptionImprovement}
-                          disabled={aiDescriptionLoading || (!formData.description && !formData.title)}
-                          className="group flex items-center gap-2 text-xs font-bold text-white bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 px-3 py-1.5 rounded-lg shadow-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                          title="Rewrite using standard formula: There is a risk that [event], caused by [cause], which may result in [impact]."
-                        >
-                          <Sparkles size={14} className="group-hover:animate-pulse" />
-                          {aiDescriptionLoading ? 'Improving...' : 'Standardize with AI'}
-                        </button>
-                      )}
-                    </div>
-                    
-                    {/* Suggestion Box */}
-                    {aiDescriptionSuggestion && (
-                        <div className="mb-3 p-4 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 rounded-lg animate-fade-in relative overflow-hidden transition-colors">
-                           <div className="absolute top-0 left-0 w-1 h-full bg-indigo-500"></div>
-                           <div className="flex items-start justify-between gap-4">
-                              <div className="flex-1">
-                                 <h4 className="flex items-center gap-2 text-xs font-bold text-indigo-700 dark:text-indigo-300 uppercase tracking-wider mb-2">
-                                    <Sparkles size={12} /> AI Suggestion
-                                 </h4>
-                                 <p className="text-sm text-slate-800 dark:text-slate-200 leading-relaxed font-medium">
-                                    {aiDescriptionSuggestion.text}
-                                 </p>
-                                 
-                                 {/* Feedback Section - Enhanced Visibility */}
-                                 <div className="mt-4 p-3 bg-white dark:bg-slate-800 border border-indigo-100 dark:border-slate-700 rounded-lg shadow-sm">
-                                   <div className="flex items-center gap-2 mb-1.5">
-                                      <div className="p-1 bg-indigo-100 dark:bg-indigo-900/50 rounded-full text-indigo-600 dark:text-indigo-400">
-                                         <Lightbulb size={12} />
-                                      </div>
-                                      <p className="text-xs font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider">
-                                         Analysis & Feedback
-                                      </p>
-                                   </div>
-                                   <p className="text-xs text-slate-600 dark:text-slate-400 italic pl-1 border-l-2 border-indigo-200 dark:border-indigo-800">
-                                      "{aiDescriptionSuggestion.feedback}"
-                                   </p>
-                                 </div>
-                              </div>
-                              <div className="flex flex-col gap-2 shrink-0">
-                                 <button 
-                                    onClick={handleAcceptAiDescription}
-                                    className="flex items-center justify-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded shadow-sm transition-colors"
-                                    title="Accept and Replace"
-                                 >
-                                    <Check size={14} /> Accept
-                                 </button>
-                                 <button 
-                                    onClick={handleDeclineAiDescription}
-                                    className="flex items-center justify-center gap-1.5 px-3 py-1.5 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 text-xs font-bold rounded shadow-sm transition-colors"
-                                    title="Decline"
-                                 >
-                                    <X size={14} /> Decline
-                                 </button>
-                              </div>
-                           </div>
-                        </div>
-                    )}
-
-                    <textarea 
-                      disabled={!canEdit}
-                      name="description" value={formData.description} onChange={handleInputChange}
-                      rows={3}
-                      className="w-full p-2.5 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white dark:bg-slate-800 dark:text-white disabled:bg-slate-50 disabled:dark:bg-slate-900 disabled:text-slate-500"
-                    />
-                  </div>
-                </div>
-              </div>
-
-               {/* Collaborators Section */}
-               <div className="bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm transition-colors">
-                 <div className="flex items-center gap-2 mb-4">
-                    <Users size={18} className="text-slate-400" />
-                    <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider">Collaborators</h3>
-                 </div>
-                 <div className="flex flex-wrap items-center gap-2">
-                    {formData.collaborators.map(collab => (
-                      <div key={collab} className="flex items-center gap-1 pl-3 pr-2 py-1 bg-slate-100 dark:bg-slate-800 rounded-full text-sm font-medium text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
-                        {collab}
+                    {/* Description */}
+                    <div>
+                      <div className="flex justify-between items-center mb-2">
+                        <label className="block text-sm font-bold text-slate-700 dark:text-slate-300">
+                           Description <span className="text-red-500">*</span>
+                           <GuidanceTooltip title="Description Formula" content="Use the formula: 'There is a risk that [Event], caused by [Cause], which may result in [Impact]'." />
+                        </label>
                         {canEdit && (
-                          <button onClick={() => handleRemoveCollaborator(collab)} className="p-0.5 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-full text-slate-400 hover:text-red-500">
-                             <X size={14} />
+                          <button 
+                            onClick={handleAIDescriptionImprovement}
+                            disabled={aiDescriptionLoading}
+                            className="text-xs flex items-center gap-1 text-purple-600 dark:text-purple-400 font-bold hover:bg-purple-50 dark:hover:bg-purple-900/30 px-2 py-1 rounded transition-colors"
+                          >
+                            <Sparkles size={14} /> 
+                            {aiDescriptionLoading ? 'Analyzing...' : 'Improve with AI'}
                           </button>
                         )}
                       </div>
-                    ))}
-                    
-                    {/* Autocomplete Input */}
-                    {canEdit && (
-                       <div className="relative">
-                          <div className="flex items-center gap-2">
-                              <div className="relative">
-                                  <Search className="absolute left-2.5 top-2 text-slate-400" size={14} />
-                                  <input 
-                                      type="text"
-                                      placeholder="Type to add..."
-                                      value={collaboratorSearch}
-                                      onChange={(e) => {
-                                          setCollaboratorSearch(e.target.value);
-                                          setShowCollaboratorList(true);
-                                      }}
-                                      onFocus={() => setShowCollaboratorList(true)}
-                                      onBlur={() => setTimeout(() => setShowCollaboratorList(false), 200)}
-                                      className="pl-8 pr-3 py-1.5 text-sm border border-slate-300 dark:border-slate-700 rounded-full focus:ring-2 focus:ring-blue-100 focus:border-blue-400 w-40 hover:w-56 transition-all bg-white dark:bg-slate-800 dark:text-white"
-                                  />
-                              </div>
-                          </div>
-                          
-                          {/* Dropdown for adding users */}
-                          {showCollaboratorList && collaboratorSearch && (
-                              <div className="absolute top-full left-0 mt-1 w-64 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-xl z-20 max-h-48 overflow-y-auto">
-                                 {filteredCollaboratorOptions.length > 0 ? (
-                                    filteredCollaboratorOptions.map(u => (
-                                     <button 
-                                      key={u.id}
-                                      onClick={() => handleAddCollaborator(u.name)}
-                                      className="w-full text-left px-4 py-2 text-sm hover:bg-blue-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 flex items-center gap-2 transition-colors border-b border-slate-50 dark:border-slate-700 last:border-0"
-                                     >
-                                       <div className="w-6 h-6 rounded-full bg-slate-200 dark:bg-slate-600 flex items-center justify-center text-xs font-bold text-slate-600 dark:text-slate-200 shrink-0">{u.name.charAt(0)}</div>
-                                       <span className="truncate">{u.name}</span>
-                                     </button>
-                                   ))
-                                 ) : (
-                                   <div className="px-4 py-3 text-xs text-slate-400 italic text-center">No matching users found</div>
-                                 )}
-                              </div>
-                          )}
-                       </div>
-                    )}
-                 </div>
-                 <p className="text-xs text-slate-400 mt-2">Collaborators can view this risk and add comments, but cannot edit risk details.</p>
+                      
+                      {/* AI Suggestion Box */}
+                      {aiDescriptionSuggestion && (
+                         <div className="mb-4 p-4 bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-xl animate-fade-in">
+                            <h4 className="flex items-center gap-2 text-sm font-bold text-purple-800 dark:text-purple-300 mb-2">
+                              <Sparkles size={16} /> AI Suggestion
+                            </h4>
+                            <div className="bg-white dark:bg-slate-800 p-3 rounded-lg border border-purple-100 dark:border-purple-900/50 mb-3 text-sm text-slate-700 dark:text-slate-300">
+                               <p className="font-mono text-xs text-slate-500 mb-1">Standardized Format:</p>
+                               {aiDescriptionSuggestion.text}
+                            </div>
+                            <div className="text-xs text-purple-700 dark:text-purple-400 mb-3 italic">
+                               Feedback: {aiDescriptionSuggestion.feedback}
+                            </div>
+                            <div className="flex gap-2">
+                               <button onClick={handleAcceptAiDescription} className="px-3 py-1.5 bg-purple-600 text-white text-xs font-bold rounded-lg hover:bg-purple-700">Accept Improved Version</button>
+                               <button onClick={handleDeclineAiDescription} className="px-3 py-1.5 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-xs font-bold border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700">Discard</button>
+                            </div>
+                         </div>
+                      )}
+
+                      <textarea 
+                        name="description"
+                        value={formData.description}
+                        onChange={handleInputChange}
+                        disabled={!canEdit}
+                        rows={5}
+                        className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white dark:bg-slate-800 dark:text-white transition-colors"
+                        placeholder="Detailed description of the risk..."
+                      />
+                    </div>
+                  </div>
                </div>
 
-              {/* Section 2: Analysis Flow */}
-              <div className="space-y-6">
-                
-                {/* 2.1 Inherent Risk */}
-                <div className="bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm transition-colors">
-                   <h3 className="text-sm font-bold text-slate-800 dark:text-white uppercase tracking-wider mb-4 flex items-center gap-2">
-                     <span className="w-1.5 h-4 bg-slate-400 rounded-full"></span>
-                     Inherent Risk
-                   </h3>
-                   <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-end">
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-semibold text-slate-500 dark:text-slate-400">Inherent Risk Impact</label>
-                        <select disabled={!canEdit} name="inherentImpact" value={formData.inherentImpact} onChange={handleNumberChange} className="w-full p-2.5 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-800 dark:text-white text-sm disabled:bg-slate-50 disabled:dark:bg-slate-900 disabled:text-slate-500">
-                          {IMPACT_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-                        </select>
-                      </div>
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-semibold text-slate-500 dark:text-slate-400">Inherent Risk Likelihood</label>
-                        <select disabled={!canEdit} name="inherentLikelihood" value={formData.inherentLikelihood} onChange={handleNumberChange} className="w-full p-2.5 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-800 dark:text-white text-sm disabled:bg-slate-50 disabled:dark:bg-slate-900 disabled:text-slate-500">
-                          {LIKELIHOOD_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-                        </select>
-                      </div>
-                      <div className={`py-2.5 px-4 rounded-lg text-sm font-bold border text-center ${inherentLevel.color} h-[42px] flex items-center justify-center`}>
-                           Score: {inherentScore} ({inherentLevel.label})
-                      </div>
-                   </div>
-                </div>
-
-                {/* 2.2 Controls & Mitigation */}
-                <div className="bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm transition-colors">
-                  <div className="flex justify-between items-center mb-4">
-                     <h3 className="text-sm font-bold text-slate-800 dark:text-white uppercase tracking-wider flex items-center gap-2">
-                       <span className="w-1.5 h-4 bg-blue-500 rounded-full"></span>
-                       Controls & Mitigation
-                     </h3>
-                     {canEdit && !aiControlsSuggestion && (
-                       <button 
-                          onClick={handleAISuggestion}
-                          disabled={aiLoading}
-                          className="flex items-center gap-1.5 text-xs font-bold text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-900/30 hover:bg-purple-100 dark:hover:bg-purple-900/50 px-3 py-1.5 rounded-lg border border-purple-200 dark:border-purple-800 transition-colors"
-                        >
-                          <Sparkles size={14} />
-                          {aiLoading ? 'Thinking...' : 'AI Suggest Controls'}
-                        </button>
-                     )}
+               {/* SCORING FLOW SECTION */}
+               <div className="space-y-6">
+                  <div className="flex items-center gap-2 text-slate-400 font-bold uppercase text-xs tracking-wider px-2">
+                     <Shield size={14} /> Risk Assessment & Mitigation
                   </div>
 
-                  {/* AI Suggestion Box for Controls */}
-                  {aiControlsSuggestion && (
-                    <div className="mb-4 p-4 bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-lg animate-fade-in relative overflow-hidden transition-colors">
-                       <div className="absolute top-0 left-0 w-1 h-full bg-purple-500"></div>
-                       <div className="flex items-start justify-between gap-4">
-                          <div className="flex-1">
-                             <h4 className="flex items-center gap-2 text-xs font-bold text-purple-700 dark:text-purple-300 uppercase tracking-wider mb-2">
-                                <Sparkles size={12} /> AI Suggested Controls
-                             </h4>
-                             <p className="text-sm text-slate-800 dark:text-slate-200 leading-relaxed font-medium whitespace-pre-line">
-                                {aiControlsSuggestion.text}
-                             </p>
-
-                             {/* Feedback Section - Enhanced Visibility */}
-                             <div className="mt-4 p-3 bg-white dark:bg-slate-800 border border-purple-100 dark:border-slate-700 rounded-lg shadow-sm">
-                                <div className="flex items-center gap-2 mb-1.5">
-                                   <div className="p-1 bg-purple-100 dark:bg-purple-900/50 rounded-full text-purple-600 dark:text-purple-400">
-                                      <Lightbulb size={12} />
-                                   </div>
-                                   <p className="text-xs font-bold text-slate-700 dark:text-slate-200 uppercase tracking-wider">
-                                      Rationale
-                                   </p>
-                                </div>
-                                <p className="text-xs text-slate-600 dark:text-slate-400 italic pl-1 border-l-2 border-purple-200 dark:border-purple-800">
-                                    "{aiControlsSuggestion.feedback}"
-                                </p>
-                              </div>
-                          </div>
-                          <div className="flex flex-col gap-2 shrink-0">
-                             <button 
-                                onClick={handleAcceptAiControls}
-                                className="flex items-center justify-center gap-1.5 px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold rounded shadow-sm transition-colors"
-                                title="Append to Controls"
-                             >
-                                <Check size={14} /> Accept
-                             </button>
-                             <button 
-                                onClick={handleDeclineAiControls}
-                                className="flex items-center justify-center gap-1.5 px-3 py-1.5 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 text-xs font-bold rounded shadow-sm transition-colors"
-                                title="Decline"
-                             >
-                                <X size={14} /> Decline
-                             </button>
-                          </div>
-                       </div>
-                    </div>
-                  )}
-                  
-                  <div className="space-y-6">
-                     <div className="space-y-2">
-                        <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">Controls In Place</label>
-                        <textarea 
-                          disabled={!canEdit}
-                          name="controlsText" value={formData.controlsText} onChange={handleInputChange}
-                          rows={6} 
-                          className="w-full p-3 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm shadow-sm bg-white dark:bg-slate-800 dark:text-white disabled:bg-slate-50 disabled:dark:bg-slate-900 disabled:text-slate-500"
-                          placeholder="List existing controls and mitigation strategies..."
-                        />
+                  {/* Step 1: Inherent Risk */}
+                  <div className="bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-700 relative">
+                     <div className="absolute top-0 left-0 w-1 h-full bg-slate-400 rounded-l-xl"></div>
+                     <div className="px-6 py-3 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center rounded-t-xl">
+                        <div className="flex items-center gap-2">
+                           <AlertTriangle size={18} className="text-slate-500 dark:text-slate-400" />
+                           <h4 className="font-bold text-slate-700 dark:text-slate-300 text-sm uppercase flex items-center">
+                              2. Inherent Risk
+                              <GuidanceTooltip title="Inherent Risk" content="The level of risk before any controls or mitigations are applied. Represents the worst-case scenario." />
+                           </h4>
+                        </div>
+                        <span className={`px-3 py-1 rounded-full text-xs font-bold ${inherentLevel.color}`}>{inherentLevel.label} ({inherentScore})</span>
                      </div>
-                     <div className="w-full md:w-1/3 space-y-2">
-                        <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">Controls Rating</label>
-                        <select 
-                          disabled={!canEdit}
-                          name="controlsRating" value={formData.controlsRating} onChange={handleInputChange}
-                          className="w-full p-2.5 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-800 dark:text-white disabled:bg-slate-50 disabled:dark:bg-slate-900 disabled:text-slate-500"
-                        >
-                          {Object.values(ControlRating).map(v => <option key={v} value={v}>{v}</option>)}
-                        </select>
+                     <div className="p-6">
+                        <div className="grid grid-cols-2 gap-6">
+                           <div>
+                              <label className="block text-xs font-bold text-slate-500 uppercase mb-2 flex items-center">
+                                 Impact
+                                 <GuidanceTooltip title="Impact Scale (Severity)" content={GUIDANCE_IMPACT} placement="right" />
+                              </label>
+                              <select 
+                                name="inherentImpact"
+                                value={formData.inherentImpact}
+                                onChange={handleNumberChange}
+                                disabled={!canEdit}
+                                className="w-full p-2.5 border border-slate-300 dark:border-slate-600 rounded-lg text-sm bg-white dark:bg-slate-800 dark:text-white shadow-sm"
+                              >
+                                {IMPACT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                              </select>
+                              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1.5 leading-tight">
+                                {IMPACT_DEFINITIONS[formData.inherentImpact]}
+                              </p>
+                           </div>
+                           <div>
+                              <label className="block text-xs font-bold text-slate-500 uppercase mb-2 flex items-center">
+                                 Likelihood
+                                 <GuidanceTooltip title="Likelihood Scale (Probability)" content={GUIDANCE_LIKELIHOOD} placement="left" />
+                              </label>
+                              <select 
+                                name="inherentLikelihood"
+                                value={formData.inherentLikelihood}
+                                onChange={handleNumberChange}
+                                disabled={!canEdit}
+                                className="w-full p-2.5 border border-slate-300 dark:border-slate-600 rounded-lg text-sm bg-white dark:bg-slate-800 dark:text-white shadow-sm"
+                              >
+                                {LIKELIHOOD_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                              </select>
+                              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1.5 leading-tight">
+                                {LIKELIHOOD_DEFINITIONS[formData.inherentLikelihood]}
+                              </p>
+                           </div>
+                        </div>
                      </div>
                   </div>
-                </div>
 
-                {/* 2.3 Residual Risk */}
-                <div className="bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm border-l-4 border-l-emerald-500 transition-colors">
-                   <h3 className="text-sm font-bold text-slate-800 dark:text-white uppercase tracking-wider mb-4 flex items-center gap-2">
-                     <span className="w-1.5 h-4 bg-emerald-500 rounded-full"></span>
-                     Residual Risk
-                   </h3>
-                   <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-end">
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-semibold text-slate-500 dark:text-slate-400">Residual Risk Impact</label>
-                        <select disabled={!canEdit} name="residualImpact" value={formData.residualImpact} onChange={handleNumberChange} className="w-full p-2.5 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-800 dark:text-white text-sm disabled:bg-slate-50 disabled:dark:bg-slate-900 disabled:text-slate-500">
-                          {IMPACT_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-                        </select>
-                      </div>
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-semibold text-slate-500 dark:text-slate-400">Residual Risk Likelihood</label>
-                        <select disabled={!canEdit} name="residualLikelihood" value={formData.residualLikelihood} onChange={handleNumberChange} className="w-full p-2.5 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-800 dark:text-white text-sm disabled:bg-slate-50 disabled:dark:bg-slate-900 disabled:text-slate-500">
-                          {LIKELIHOOD_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-                        </select>
-                      </div>
-                      <div className={`py-2.5 px-4 rounded-lg text-sm font-bold border text-center ${residualLevel.color} h-[42px] flex items-center justify-center`}>
-                           Score: {residualScore} ({residualLevel.label})
-                      </div>
-                   </div>
-                </div>
+                  {/* Flow Arrow */}
+                  <div className="flex justify-center -my-3 z-10 relative">
+                     <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-full p-1.5 shadow-sm text-slate-400">
+                        <ArrowDown size={16} />
+                     </div>
+                  </div>
 
-                {/* 2.4 Risk Status (Segregated) */}
-                <div className={`p-6 rounded-xl border shadow-sm transition-colors ${formData.status === RiskStatus.CLOSED ? 'bg-slate-100 dark:bg-slate-800 border-slate-300 dark:border-slate-600' : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800'}`}>
-                   <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                      <div>
-                         <h3 className="text-sm font-bold text-slate-800 dark:text-white uppercase tracking-wider mb-1">Risk Status</h3>
-                         <p className="text-xs text-slate-500 dark:text-slate-400">Current lifecycle state of this risk record.</p>
+                  {/* Step 2: Controls & Mitigation */}
+                  <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 relative shadow-sm">
+                      <div className="absolute top-0 left-0 w-1 h-full bg-blue-500 rounded-l-xl"></div>
+                      <div className="px-6 py-3 bg-blue-50/50 dark:bg-blue-900/10 border-b border-blue-100 dark:border-blue-900/30 flex justify-between items-center rounded-t-xl">
+                         <div className="flex items-center gap-2">
+                           <Shield size={18} className="text-blue-600 dark:text-blue-400" />
+                           <h4 className="font-bold text-slate-700 dark:text-slate-300 text-sm uppercase">3. Controls & Mitigation</h4>
+                         </div>
+                         {canEdit && (
+                           <button 
+                             onClick={handleAISuggestion}
+                             disabled={aiLoading}
+                             className="text-xs flex items-center gap-1 text-blue-600 dark:text-blue-400 font-bold hover:bg-blue-100 dark:hover:bg-blue-900/50 px-3 py-1.5 rounded-full transition-colors bg-white dark:bg-slate-800 border border-blue-200 dark:border-blue-800"
+                           >
+                             <Lightbulb size={14} /> 
+                             {aiLoading ? 'Thinking...' : 'Suggest'}
+                           </button>
+                         )}
                       </div>
-                      <div className="w-full md:w-auto flex flex-col md:flex-row items-start md:items-center gap-4">
-                         
-                         {/* Admin-Only Close Checkbox */}
-                         <div className={`flex items-center gap-2 px-4 py-2 rounded-lg border ${formData.status === RiskStatus.CLOSED ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800' : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700'}`}>
-                            <input 
-                              type="checkbox"
-                              id="closeRiskCheckbox"
-                              checked={formData.status === RiskStatus.CLOSED}
-                              disabled={currentUser.role !== 'RMIA'} 
-                              onChange={(e) => {
-                                const newStatus = e.target.checked ? RiskStatus.CLOSED : RiskStatus.OPEN;
-                                setFormData(prev => ({ 
-                                  ...prev, 
-                                  status: newStatus,
-                                  // Auto-update review date when closing/re-opening
-                                  lastReviewDate: new Date().toISOString().split('T')[0],
-                                  lastReviewer: currentUser.name
-                                }));
-                              }}
-                              className="w-5 h-5 rounded border-slate-300 text-red-600 focus:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed"
-                            />
-                            <label htmlFor="closeRiskCheckbox" className={`text-sm font-bold select-none ${currentUser.role === 'RMIA' ? 'cursor-pointer' : 'cursor-not-allowed'} ${formData.status === RiskStatus.CLOSED ? 'text-red-700 dark:text-red-400' : 'text-slate-600 dark:text-slate-300'}`}>
-                               Risk Closed
-                            </label>
-                            {currentUser.role !== 'RMIA' && (
-                              <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider ml-1">(Admins Only)</span>
-                            )}
+
+                      <div className="p-6">
+                         {/* AI Controls Suggestion */}
+                         {aiControlsSuggestion && (
+                            <div className="mb-6 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl animate-fade-in">
+                               <h4 className="flex items-center gap-2 text-sm font-bold text-blue-800 dark:text-blue-300 mb-2">
+                                 <Sparkles size={16} /> AI Mitigation Strategy
+                               </h4>
+                               <div className="prose prose-sm dark:prose-invert max-w-none mb-3">
+                                  <pre className="whitespace-pre-wrap font-sans text-sm text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 p-3 rounded-lg border border-blue-100 dark:border-blue-900/50">
+                                    {aiControlsSuggestion.text}
+                                  </pre>
+                               </div>
+                               <div className="text-xs text-blue-700 dark:text-blue-400 mb-3 italic">
+                                  Rationale: {aiControlsSuggestion.feedback}
+                               </div>
+                               <div className="flex gap-2">
+                                  <button onClick={handleAcceptAiControls} className="px-3 py-1.5 bg-blue-600 text-white text-xs font-bold rounded-lg hover:bg-blue-700">Add to Controls</button>
+                                  <button onClick={handleDeclineAiControls} className="px-3 py-1.5 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-xs font-bold border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700">Discard</button>
+                               </div>
+                            </div>
+                         )}
+
+                         <div className="mb-4">
+                           <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Controls Description</label>
+                           <textarea 
+                             name="controlsText"
+                             value={formData.controlsText}
+                             onChange={handleInputChange}
+                             disabled={!canEdit}
+                             rows={4}
+                             className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white dark:bg-slate-800 dark:text-white"
+                             placeholder="List existing controls and mitigation strategies..."
+                           />
                          </div>
 
-                         {/* Status Dropdown (Hidden or Disabled if Closed) */}
-                         <div className="w-full md:w-48">
-                           <select 
-                            disabled={!canEdit || formData.status === RiskStatus.CLOSED}
-                            name="status" value={formData.status === RiskStatus.CLOSED ? '' : formData.status} 
-                            onChange={handleInputChange}
-                            className="w-full p-2.5 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 font-medium text-slate-700 dark:text-slate-200 disabled:bg-slate-50 disabled:dark:bg-slate-900 disabled:text-slate-500"
-                          >
-                            {formData.status === RiskStatus.CLOSED && <option value="">(Closed)</option>}
-                            {Object.values(RiskStatus)
-                              .filter(s => s !== RiskStatus.CLOSED)
-                              .map(v => <option key={v} value={v}>{v}</option>)
-                            }
-                          </select>
+                         <div>
+                            <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2 flex items-center">
+                               Controls Rating
+                               <GuidanceTooltip title="Controls Effectiveness" content={GUIDANCE_CONTROLS} />
+                            </label>
+                            <select 
+                              name="controlsRating"
+                              value={formData.controlsRating}
+                              onChange={handleInputChange}
+                              disabled={!canEdit}
+                              className="w-full md:w-1/2 px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white dark:bg-slate-800 dark:text-white"
+                            >
+                               {Object.values(ControlRating).map(r => <option key={r} value={r}>{r}</option>)}
+                            </select>
+                         </div>
+                      </div>
+                  </div>
+
+                  {/* Flow Arrow */}
+                  <div className="flex justify-center -my-3 z-10 relative">
+                     <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-full p-1.5 shadow-sm text-slate-400">
+                        <ArrowDown size={16} />
+                     </div>
+                  </div>
+
+                  {/* Step 3: Residual Risk */}
+                  <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 relative shadow-sm ring-1 ring-slate-100 dark:ring-slate-800">
+                     <div className="absolute top-0 left-0 w-1 h-full bg-purple-500 rounded-l-xl"></div>
+                     <div className="px-6 py-3 bg-purple-50/50 dark:bg-purple-900/10 border-b border-purple-100 dark:border-purple-900/30 flex justify-between items-center rounded-t-xl">
+                        <div className="flex items-center gap-2">
+                          <Activity size={18} className="text-purple-600 dark:text-purple-400" />
+                          <h4 className="font-bold text-slate-700 dark:text-slate-300 text-sm uppercase flex items-center">
+                             4. Residual Risk
+                             <GuidanceTooltip title="Residual Risk" content="The remaining risk level after applying the current controls. This is the 'Actual' risk exposure." />
+                          </h4>
                         </div>
+                        <span className={`px-3 py-1 rounded-full text-xs font-bold ${residualLevel.color}`}>{residualLevel.label} ({residualScore})</span>
+                     </div>
+                     <div className="p-6">
+                        <div className="grid grid-cols-2 gap-6">
+                           <div>
+                              <label className="block text-xs font-bold text-slate-500 uppercase mb-2 flex items-center">
+                                 Impact
+                                 <GuidanceTooltip title="Impact Scale (Severity)" content={GUIDANCE_IMPACT} placement="right" />
+                              </label>
+                              <select 
+                                name="residualImpact"
+                                value={formData.residualImpact}
+                                onChange={handleNumberChange}
+                                disabled={!canEdit}
+                                className="w-full p-2.5 border border-slate-300 dark:border-slate-600 rounded-lg text-sm bg-slate-50 dark:bg-slate-900 dark:text-white font-bold"
+                              >
+                                {IMPACT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                              </select>
+                              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1.5 leading-tight">
+                                {IMPACT_DEFINITIONS[formData.residualImpact]}
+                              </p>
+                           </div>
+                           <div>
+                              <label className="block text-xs font-bold text-slate-500 uppercase mb-2 flex items-center">
+                                 Likelihood
+                                 <GuidanceTooltip title="Likelihood Scale (Probability)" content={GUIDANCE_LIKELIHOOD} placement="left" />
+                              </label>
+                              <select 
+                                name="residualLikelihood"
+                                value={formData.residualLikelihood}
+                                onChange={handleNumberChange}
+                                disabled={!canEdit}
+                                className="w-full p-2.5 border border-slate-300 dark:border-slate-600 rounded-lg text-sm bg-slate-50 dark:bg-slate-900 dark:text-white font-bold"
+                              >
+                                {LIKELIHOOD_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                              </select>
+                              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1.5 leading-tight">
+                                {LIKELIHOOD_DEFINITIONS[formData.residualLikelihood]}
+                              </p>
+                           </div>
+                        </div>
+                     </div>
+                  </div>
+               </div>
+
+               {/* SECTION 3: STATUS (Footer) */}
+               <div className="bg-emerald-50 dark:bg-emerald-900/10 rounded-xl border border-emerald-100 dark:border-emerald-900/30 mt-8">
+                  <div className="px-6 py-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                     <div className="flex items-center gap-3">
+                        <div className="p-2 bg-emerald-100 dark:bg-emerald-900/50 rounded-lg text-emerald-600 dark:text-emerald-400">
+                           <Target size={24} />
+                        </div>
+                        <div>
+                           <h4 className="font-bold text-emerald-900 dark:text-emerald-300 uppercase text-sm">5. Current Status</h4>
+                           <p className="text-xs text-emerald-700 dark:text-emerald-400">Final determination of risk state</p>
+                        </div>
+                     </div>
+                     
+                     <div className="flex-1 max-w-xs">
+                        <select 
+                           name="status"
+                           value={formData.status}
+                           onChange={handleInputChange}
+                           disabled={!canEdit}
+                           className={`w-full px-4 py-3 border-2 rounded-xl focus:ring-0 font-bold text-sm outline-none transition-colors ${
+                             formData.status === 'Open' ? 'border-blue-200 bg-blue-50 text-blue-700 dark:bg-slate-800 dark:border-blue-900 dark:text-blue-400' : 
+                             formData.status === 'Reviewed' ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:bg-slate-800 dark:border-emerald-900 dark:text-emerald-400' : 
+                             formData.status === 'Closed' ? 'border-slate-200 bg-slate-50 text-slate-600 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-400' : 
+                             'border-amber-200 bg-amber-50 text-amber-700 dark:bg-slate-800 dark:border-amber-900 dark:text-amber-400'
+                           }`}
+                        >
+                           {Object.values(RiskStatus).map(s => (
+                             <option 
+                               key={s} 
+                               value={s}
+                               disabled={!isAdmin && s !== RiskStatus.OPEN && s !== RiskStatus.UPDATED && s !== formData.status}
+                             >
+                               {s}
+                             </option>
+                           ))}
+                        </select>
+                     </div>
+                  </div>
+               </div>
+
+               {/* Collaborators */}
+               <div className="pt-4 border-t border-slate-200 dark:border-slate-800">
+                  <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-3">Collaborators</label>
+                  <div className="flex flex-wrap gap-2 mb-3">
+                     {formData.collaborators.map(c => (
+                        <span key={c} className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-sm border border-slate-200 dark:border-slate-700">
+                           <UserIcon size={12} /> {c}
+                           {canEdit && <button onClick={() => handleRemoveCollaborator(c)} className="hover:text-red-500"><X size={14} /></button>}
+                        </span>
+                     ))}
+                     {canEdit && (
+                       <button 
+                         onClick={() => setShowCollaboratorList(true)}
+                         className="inline-flex items-center gap-1 px-3 py-1 rounded-full border border-dashed border-slate-300 text-slate-500 hover:border-blue-400 hover:text-blue-500 text-sm"
+                       >
+                          <Plus size={14} /> Add
+                       </button>
+                     )}
+                  </div>
+                  
+                  {/* Collaborator Search Dropdown */}
+                  {showCollaboratorList && (
+                     <div className="max-w-xs relative animate-fade-in">
+                        <div className="flex items-center gap-2 border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-2 bg-white dark:bg-slate-800">
+                           <Search size={16} className="text-slate-400" />
+                           <input 
+                             autoFocus
+                             type="text" 
+                             placeholder="Search users..." 
+                             value={collaboratorSearch}
+                             onChange={(e) => setCollaboratorSearch(e.target.value)}
+                             className="flex-1 bg-transparent outline-none text-sm dark:text-white"
+                           />
+                           <button onClick={() => setShowCollaboratorList(false)}><X size={16} className="text-slate-400 hover:text-slate-600" /></button>
+                        </div>
+                        <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg shadow-xl z-20 max-h-48 overflow-y-auto">
+                           {filteredCollaboratorOptions.length === 0 ? (
+                             <div className="p-3 text-sm text-slate-500">No users found</div>
+                           ) : (
+                             filteredCollaboratorOptions.map(u => (
+                               <button 
+                                 key={u.id}
+                                 onClick={() => handleAddCollaborator(u.name)}
+                                 className="w-full text-left px-4 py-2 hover:bg-slate-50 dark:hover:bg-slate-800 text-sm text-slate-700 dark:text-slate-200"
+                               >
+                                 {u.name} <span className="text-slate-400 text-xs ml-1">({u.role})</span>
+                               </button>
+                             ))
+                           )}
+                        </div>
+                     </div>
+                  )}
+               </div>
+            </div>
+          )}
+          
+          {/* Actions Tab */}
+          {activeTab === 'actions' && (
+             <div className="space-y-6">
+                <div className="flex justify-between items-center">
+                   <h3 className="text-lg font-bold text-slate-800 dark:text-white">Mitigation Action Plan</h3>
+                   {canEdit && (
+                     <button 
+                       onClick={() => setShowActionForm(!showActionForm)}
+                       className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium shadow-sm transition-colors"
+                     >
+                        <Plus size={18} /> Add Action
+                     </button>
+                   )}
+                </div>
+
+                {/* Add Action Form */}
+                {showActionForm && (
+                   <div className="bg-slate-50 dark:bg-slate-800/50 p-6 rounded-xl border border-slate-200 dark:border-slate-700 animate-fade-in">
+                      <h4 className="font-bold text-slate-700 dark:text-slate-300 mb-4">New Action Item</h4>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                         <input 
+                           type="text" 
+                           placeholder="Action Title"
+                           value={newAction.title}
+                           onChange={(e) => setNewAction({...newAction, title: e.target.value})}
+                           className="px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 dark:text-white"
+                         />
+                         
+                         {/* Action Owner Selection (New) */}
+                         <div className="relative">
+                           <input 
+                             type="text" 
+                             placeholder="Owner (Search...)"
+                             value={newAction.owner}
+                             onChange={(e) => setNewAction({...newAction, owner: e.target.value})}
+                             onFocus={() => setShowActionOwnerList(true)}
+                             onBlur={() => setTimeout(() => setShowActionOwnerList(false), 200)}
+                             className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 dark:text-white"
+                           />
+                           {showActionOwnerList && (
+                             <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg shadow-xl z-20 max-h-48 overflow-y-auto">
+                                {users.filter(u => u.name.toLowerCase().includes((newAction.owner || '').toLowerCase())).map(u => (
+                                   <button 
+                                     key={u.id}
+                                     onMouseDown={() => setNewAction({...newAction, owner: u.name})}
+                                     className="w-full text-left px-4 py-2 hover:bg-slate-50 dark:hover:bg-slate-800 text-sm text-slate-700 dark:text-slate-200"
+                                   >
+                                     {u.name}
+                                   </button>
+                                ))}
+                             </div>
+                           )}
+                         </div>
+
+                         <input 
+                           type="date" 
+                           value={newAction.dueDate}
+                           onChange={(e) => setNewAction({...newAction, dueDate: e.target.value})}
+                           className="px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 dark:text-white"
+                         />
+                         <select 
+                           value={newAction.status}
+                           onChange={(e) => setNewAction({...newAction, status: e.target.value as any})}
+                           className="px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 dark:text-white"
+                         >
+                            <option value="Open">Open</option>
+                            <option value="Closed">Closed</option>
+                            <option value="Approved">Approved</option>
+                         </select>
+                      </div>
+                      <textarea 
+                        placeholder="Detailed description..."
+                        value={newAction.description}
+                        onChange={(e) => setNewAction({...newAction, description: e.target.value})}
+                        className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 dark:text-white mb-4"
+                        rows={3}
+                      />
+                      
+                      {/* Attachments for New Action */}
+                      <div className="mb-4">
+                         <div className="flex items-center gap-2 mb-2">
+                            <label className="flex items-center gap-2 px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors text-sm text-slate-600 dark:text-slate-300">
+                               <Paperclip size={14} /> Attach Files
+                               <input type="file" multiple className="hidden" onChange={(e) => handleFileUpload(e, false)} />
+                            </label>
+                            <span className="text-xs text-slate-400">PDF, Excel, Images allowed</span>
+                         </div>
+                         {newAction.attachments && newAction.attachments.length > 0 && (
+                            <div className="flex flex-wrap gap-2">
+                               {newAction.attachments.map(att => (
+                                  <div key={att.id} className="flex items-center gap-2 px-3 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs">
+                                     <FileText size={12} className="text-blue-500" />
+                                     <span className="truncate max-w-[150px]">{att.name}</span>
+                                     <button onClick={() => handleRemoveAttachment(att.id, false)} className="text-red-400 hover:text-red-600"><X size={12} /></button>
+                                  </div>
+                               ))}
+                            </div>
+                         )}
+                      </div>
+
+                      <div className="flex justify-end gap-3">
+                         <button onClick={() => setShowActionForm(false)} className="px-4 py-2 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg">Cancel</button>
+                         <button onClick={handleSaveAction} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Save Action</button>
                       </div>
                    </div>
-                </div>
+                )}
 
-              </div>
-            </div>
-          )}
+                {/* Actions List */}
+                {actions.length === 0 ? (
+                   <div className="text-center py-12 text-slate-400 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-dashed border-slate-300 dark:border-slate-700">
+                      <p>No action plans defined.</p>
+                   </div>
+                ) : (
+                   <div className="space-y-4">
+                      {actions.map(action => (
+                         <div key={action.id} className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow">
+                            {editingActionId === action.id && editingActionData ? (
+                               // Edit Mode
+                               <div className="space-y-4">
+                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                     <input 
+                                       value={editingActionData.title}
+                                       onChange={(e) => setEditingActionData({...editingActionData, title: e.target.value})}
+                                       className="px-3 py-2 border rounded-lg text-sm dark:bg-slate-900 dark:border-slate-600"
+                                     />
+                                     <select 
+                                       value={editingActionData.status}
+                                       onChange={(e) => setEditingActionData({...editingActionData, status: e.target.value as any})}
+                                       className="px-3 py-2 border rounded-lg text-sm dark:bg-slate-900 dark:border-slate-600"
+                                     >
+                                        <option value="Open">Open</option>
+                                        <option value="Closed">Closed</option>
+                                        <option value="Approved">Approved</option>
+                                     </select>
+                                  </div>
 
-          {/* ACTIONS TAB */}
-          {activeTab === 'actions' && (
-            <div className="space-y-6 max-w-[95%] lg:max-w-7xl mx-auto">
-              <div className="flex justify-between items-center">
-                 <h3 className="text-lg font-bold text-slate-800 dark:text-white">Action Plan</h3>
-                 {!showActionForm && canEdit && (
-                   <button 
-                    onClick={() => setShowActionForm(true)}
-                    className="flex items-center gap-2 text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg transition-colors shadow-sm"
-                   >
-                    <Plus size={16} /> Add Action Plan
-                   </button>
-                 )}
-              </div>
+                                  {/* Edit Mode Owner (Dropdown) */}
+                                  <div className="relative">
+                                    <label className="text-xs font-bold text-slate-500 mb-1 block">Owner</label>
+                                    <input 
+                                       type="text"
+                                       value={editingActionData.owner}
+                                       onChange={(e) => setEditingActionData({...editingActionData, owner: e.target.value})}
+                                       onFocus={() => setShowEditActionOwnerList(true)}
+                                       onBlur={() => setTimeout(() => setShowEditActionOwnerList(false), 200)}
+                                       className="w-full px-3 py-2 border rounded-lg text-sm dark:bg-slate-900 dark:border-slate-600"
+                                    />
+                                    {showEditActionOwnerList && (
+                                       <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg shadow-xl z-20 max-h-48 overflow-y-auto">
+                                          {users.filter(u => u.name.toLowerCase().includes((editingActionData.owner || '').toLowerCase())).map(u => (
+                                             <button 
+                                                key={u.id}
+                                                onMouseDown={() => setEditingActionData({...editingActionData, owner: u.name})}
+                                                className="w-full text-left px-4 py-2 hover:bg-slate-50 dark:hover:bg-slate-800 text-sm text-slate-700 dark:text-slate-200"
+                                             >
+                                                {u.name}
+                                             </button>
+                                          ))}
+                                       </div>
+                                    )}
+                                  </div>
 
-              {/* Add Action Form */}
-              {showActionForm && (
-                <div className="bg-slate-50 dark:bg-slate-800 p-6 rounded-xl border border-blue-200 dark:border-blue-800 shadow-sm mb-6 animate-fade-in transition-colors">
-                  <h4 className="font-bold text-slate-800 dark:text-white mb-4 text-sm uppercase">New Action Plan</h4>
-                  <div className="grid grid-cols-2 gap-4 mb-4">
-                     <div className="space-y-1">
-                       <label className="text-xs font-semibold text-slate-600 dark:text-slate-400">Action</label>
-                       <input 
-                          type="text" 
-                          placeholder="Action Title"
-                          value={newAction.title}
-                          onChange={e => setNewAction({...newAction, title: e.target.value})}
-                          className="w-full p-2 border border-slate-300 dark:border-slate-600 rounded focus:ring-1 focus:ring-blue-500 bg-white dark:bg-slate-700 dark:text-white"
-                       />
-                     </div>
-                     <div className="space-y-1">
-                       <label className="text-xs font-semibold text-slate-600 dark:text-slate-400">Action Owner</label>
-                       <input 
-                          type="text" 
-                          placeholder="Owner Name"
-                          value={newAction.owner}
-                          onChange={e => setNewAction({...newAction, owner: e.target.value})}
-                          className="w-full p-2 border border-slate-300 dark:border-slate-600 rounded focus:ring-1 focus:ring-blue-500 bg-white dark:bg-slate-700 dark:text-white"
-                       />
-                     </div>
-                     <div className="space-y-1">
-                       <label className="text-xs font-semibold text-slate-600 dark:text-slate-400">Due Date</label>
-                       <input 
-                          type="date" 
-                          value={newAction.dueDate}
-                          onChange={e => setNewAction({...newAction, dueDate: e.target.value})}
-                          className="w-full p-2 border border-slate-300 dark:border-slate-600 rounded focus:ring-1 focus:ring-blue-500 bg-white dark:bg-slate-700 dark:text-white"
-                       />
-                     </div>
-                     <div className="space-y-1">
-                       <label className="text-xs font-semibold text-slate-600 dark:text-slate-400">Status</label>
-                       <select
-                          value={newAction.status}
-                          onChange={e => setNewAction({...newAction, status: e.target.value as any})}
-                          className="w-full p-2 border border-slate-300 dark:border-slate-600 rounded focus:ring-1 focus:ring-blue-500 bg-white dark:bg-slate-700 dark:text-white"
-                       >
-                         <option value="Open">Open</option>
-                         <option value="Closed">Closed</option>
-                         <option value="Approved">Approved</option>
-                       </select>
-                     </div>
-                     <div className="col-span-2 space-y-1">
-                       <label className="text-xs font-semibold text-slate-600 dark:text-slate-400">Detailed mitigation action plan</label>
-                       <textarea 
-                          rows={2}
-                          value={newAction.description}
-                          onChange={e => setNewAction({...newAction, description: e.target.value})}
-                          className="w-full p-2 border border-slate-300 dark:border-slate-600 rounded focus:ring-1 focus:ring-blue-500 bg-white dark:bg-slate-700 dark:text-white"
-                          placeholder="Describe the action details..."
-                       />
-                     </div>
-
-                     {/* File Attachment Input (New) */}
-                     <div className="col-span-2 space-y-1 mt-2">
-                        <label className="text-xs font-semibold text-slate-600 dark:text-slate-400 flex items-center gap-2">
-                          <Paperclip size={12} /> Attach Documents
-                        </label>
-                        <input 
-                          type="file" 
-                          multiple
-                          onChange={(e) => handleFileUpload(e, false)}
-                          className="block w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 dark:file:bg-slate-700 dark:file:text-slate-200"
-                        />
-                        {/* List New Attachments */}
-                        {newAction.attachments && newAction.attachments.length > 0 && (
-                          <div className="mt-2 flex flex-wrap gap-2">
-                             {newAction.attachments.map(att => (
-                               <div key={att.id} className="flex items-center gap-1.5 px-2 py-1 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded text-xs">
-                                  <FileText size={12} className="text-blue-500" />
-                                  <span className="truncate max-w-[150px] text-slate-700 dark:text-slate-200">{att.name}</span>
-                                  <button onClick={() => handleRemoveAttachment(att.id, false)} className="text-slate-400 hover:text-red-500">
-                                    <X size={12} />
-                                  </button>
-                               </div>
-                             ))}
-                          </div>
-                        )}
-                     </div>
-                  </div>
-                  <div className="flex justify-end gap-2">
-                    <button 
-                      onClick={() => setShowActionForm(false)}
-                      className="px-3 py-1.5 text-slate-600 dark:text-slate-300 text-sm font-medium hover:bg-slate-200 dark:hover:bg-slate-700 rounded"
-                    >
-                      Cancel
-                    </button>
-                    <button 
-                      onClick={handleSaveAction}
-                      className="px-4 py-1.5 bg-blue-600 text-white text-sm font-medium rounded hover:bg-blue-700"
-                    >
-                      Save Action
-                    </button>
-                  </div>
-                </div>
-              )}
-              
-              {actions.length === 0 ? (
-                !showActionForm && (
-                  <div className="text-center py-16 border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-xl bg-slate-50 dark:bg-slate-800/50">
-                    <div className="text-4xl mb-4">📋</div>
-                    <h4 className="text-lg font-medium text-slate-700 dark:text-slate-300">No action plans defined</h4>
-                    <p className="text-slate-500 dark:text-slate-400">Create an action plan to mitigate this risk.</p>
-                  </div>
-                )
-              ) : (
-                <div className="grid gap-4">
-                  {actions.map(action => {
-                    if (editingActionId === action.id && editingActionData) {
-                       // Edit Form Mode for this action
-                       return (
-                        <div key={action.id} className="bg-slate-50 dark:bg-slate-800 p-6 rounded-xl border border-blue-400 dark:border-blue-600 shadow-md animate-fade-in transition-colors">
-                           <h4 className="font-bold text-slate-800 dark:text-white mb-4 text-sm uppercase flex items-center gap-2">
-                             <Edit2 size={14} className="text-blue-500" /> Editing Action
-                           </h4>
-                           <div className="grid grid-cols-2 gap-4 mb-4">
-                              <div className="space-y-1">
-                                <label className="text-xs font-semibold text-slate-600 dark:text-slate-400">Action</label>
-                                <input 
-                                   type="text" 
-                                   value={editingActionData.title}
-                                   onChange={e => setEditingActionData({...editingActionData, title: e.target.value})}
-                                   className="w-full p-2 border border-slate-300 dark:border-slate-600 rounded focus:ring-1 focus:ring-blue-500 bg-white dark:bg-slate-700 dark:text-white"
-                                />
-                              </div>
-                              <div className="space-y-1">
-                                <label className="text-xs font-semibold text-slate-600 dark:text-slate-400">Action Owner</label>
-                                <input 
-                                   type="text" 
-                                   value={editingActionData.owner}
-                                   onChange={e => setEditingActionData({...editingActionData, owner: e.target.value})}
-                                   className="w-full p-2 border border-slate-300 dark:border-slate-600 rounded focus:ring-1 focus:ring-blue-500 bg-white dark:bg-slate-700 dark:text-white"
-                                />
-                              </div>
-                              <div className="space-y-1">
-                                <label className="text-xs font-semibold text-slate-600 dark:text-slate-400">Due Date</label>
-                                <input 
-                                   type="date" 
-                                   value={editingActionData.dueDate}
-                                   onChange={e => setEditingActionData({...editingActionData, dueDate: e.target.value})}
-                                   className="w-full p-2 border border-slate-300 dark:border-slate-600 rounded focus:ring-1 focus:ring-blue-500 bg-white dark:bg-slate-700 dark:text-white"
-                                />
-                              </div>
-                              <div className="space-y-1">
-                                <label className="text-xs font-semibold text-slate-600 dark:text-slate-400">Status</label>
-                                <select
-                                   value={editingActionData.status}
-                                   onChange={e => setEditingActionData({...editingActionData, status: e.target.value as any})}
-                                   className="w-full p-2 border border-slate-300 dark:border-slate-600 rounded focus:ring-1 focus:ring-blue-500 bg-white dark:bg-slate-700 dark:text-white"
-                                >
-                                  <option value="Open">Open</option>
-                                  <option value="Closed">Closed</option>
-                                  <option value="Approved">Approved</option>
-                                </select>
-                              </div>
-                              <div className="col-span-2 space-y-1">
-                                <label className="text-xs font-semibold text-slate-600 dark:text-slate-400">Detailed mitigation action plan</label>
-                                <textarea 
-                                   rows={2}
-                                   value={editingActionData.description}
-                                   onChange={e => setEditingActionData({...editingActionData, description: e.target.value})}
-                                   className="w-full p-2 border border-slate-300 dark:border-slate-600 rounded focus:ring-1 focus:ring-blue-500 bg-white dark:bg-slate-700 dark:text-white"
-                                />
-                              </div>
-
-                              {/* File Attachment Input (Edit) */}
-                              <div className="col-span-2 space-y-1 mt-2">
-                                  <label className="text-xs font-semibold text-slate-600 dark:text-slate-400 flex items-center gap-2">
-                                    <Paperclip size={12} /> Attach Documents
-                                  </label>
-                                  <input 
-                                    type="file" 
-                                    multiple
-                                    onChange={(e) => handleFileUpload(e, true)}
-                                    className="block w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 dark:file:bg-slate-700 dark:file:text-slate-200"
+                                  <textarea 
+                                    value={editingActionData.description}
+                                    onChange={(e) => setEditingActionData({...editingActionData, description: e.target.value})}
+                                    className="w-full px-3 py-2 border rounded-lg text-sm dark:bg-slate-900 dark:border-slate-600"
+                                    rows={2}
                                   />
-                                  {/* List Attachments in Edit Mode */}
-                                  {editingActionData.attachments && editingActionData.attachments.length > 0 && (
-                                    <div className="mt-2 flex flex-wrap gap-2">
-                                      {editingActionData.attachments.map(att => (
-                                        <div key={att.id} className="flex items-center gap-1.5 px-2 py-1 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded text-xs">
-                                            <FileText size={12} className="text-blue-500" />
-                                            <span className="truncate max-w-[150px] text-slate-700 dark:text-slate-200">{att.name}</span>
-                                            <button onClick={() => handleRemoveAttachment(att.id, true)} className="text-slate-400 hover:text-red-500">
-                                              <X size={12} />
-                                            </button>
-                                        </div>
-                                      ))}
-                                    </div>
+                                  <div className="flex justify-end gap-2">
+                                     <button onClick={handleCancelEditAction} className="px-3 py-1.5 text-xs font-bold text-slate-500">Cancel</button>
+                                     <button onClick={handleSaveEditAction} className="px-3 py-1.5 bg-blue-600 text-white text-xs font-bold rounded">Save</button>
+                                  </div>
+                               </div>
+                            ) : (
+                               // View Mode
+                               <div>
+                                  <div className="flex justify-between items-start mb-2">
+                                     <h4 className={`font-bold text-base ${action.status === 'Closed' ? 'text-slate-400 line-through' : 'text-slate-800 dark:text-white'}`}>{action.title}</h4>
+                                     <div className="flex items-center gap-2">
+                                        <span className={`px-2 py-0.5 text-xs font-bold rounded-full ${action.status === 'Open' ? 'bg-blue-100 text-blue-700' : action.status === 'Approved' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                                           {action.status}
+                                        </span>
+                                        {canEdit && (
+                                           <div className="flex gap-1 ml-2">
+                                              <button onClick={() => handleStartEditAction(action)} className="p-1 hover:bg-slate-100 dark:hover:bg-slate-700 rounded text-slate-400 hover:text-blue-500"><Edit2 size={14} /></button>
+                                              <button onClick={() => handleDeleteActionClick(action.id)} className="p-1 hover:bg-slate-100 dark:hover:bg-slate-700 rounded text-slate-400 hover:text-red-500"><Trash2 size={14} /></button>
+                                           </div>
+                                        )}
+                                     </div>
+                                  </div>
+                                  <p className="text-sm text-slate-600 dark:text-slate-300 mb-3">{action.description}</p>
+                                  
+                                  {/* Attachments List */}
+                                  {action.attachments && action.attachments.length > 0 && (
+                                     <div className="flex flex-wrap gap-2 mb-3">
+                                        {action.attachments.map(att => (
+                                           <a key={att.id} href={att.url} target="_blank" rel="noreferrer" className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-700 dark:text-slate-300 hover:bg-slate-100 transition-colors">
+                                              <FileText size={12} className="text-blue-500" />
+                                              {att.name}
+                                              <Download size={12} className="text-slate-400" />
+                                           </a>
+                                        ))}
+                                     </div>
                                   )}
-                              </div>
 
-                           </div>
-                           <div className="flex justify-between items-center">
-                             {canDelete ? (
-                               <button 
-                                 onClick={() => handleDeleteActionClick(action.id)}
-                                 className="text-red-500 hover:text-red-700 text-sm flex items-center gap-1 font-medium"
-                               >
-                                 <Trash2 size={14} /> Delete
-                               </button>
-                             ) : <div></div>}
-                             <div className="flex gap-2">
-                               <button 
-                                 onClick={handleCancelEditAction}
-                                 className="px-3 py-1.5 text-slate-600 dark:text-slate-300 text-sm font-medium hover:bg-slate-200 dark:hover:bg-slate-700 rounded"
-                               >
-                                 Cancel
-                               </button>
-                               <button 
-                                 onClick={handleSaveEditAction}
-                                 className="px-4 py-1.5 bg-blue-600 text-white text-sm font-medium rounded hover:bg-blue-700"
-                               >
-                                 Update Action
-                               </button>
-                             </div>
-                           </div>
-                        </div>
-                       );
-                    }
-                    
-                    // Display Card Mode
-                    return (
-                      <div key={action.id} className="bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col md:flex-row gap-4 hover:border-blue-300 dark:hover:border-blue-700 transition-colors group">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-3 mb-2">
-                             <span className={`px-2.5 py-0.5 text-xs rounded-full font-bold uppercase tracking-wide ${
-                               action.status === 'Approved' ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400' :
-                               action.status === 'Open' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400' :
-                               'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
-                             }`}>
-                               {action.status}
-                             </span>
-                             <span className="text-xs text-slate-400 font-mono">#{action.id}</span>
-                          </div>
-                          <h4 className="font-bold text-slate-800 dark:text-white text-lg">{action.title}</h4>
-                          <p className="text-slate-600 dark:text-slate-300 mt-1 leading-relaxed text-sm">{action.description}</p>
-                          
-                          {/* Display Attachments (Read Only) */}
-                          {action.attachments && action.attachments.length > 0 && (
-                             <div className="mt-3 flex flex-wrap gap-2">
-                               {action.attachments.map(att => (
-                                 <a 
-                                    key={att.id} 
-                                    href={att.url} 
-                                    target="_blank" 
-                                    rel="noreferrer"
-                                    className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-medium text-slate-600 dark:text-slate-300 hover:bg-blue-50 dark:hover:bg-slate-700 hover:border-blue-200 hover:text-blue-600 transition-colors"
-                                 >
-                                    <Paperclip size={12} />
-                                    <span className="truncate max-w-[150px]">{att.name}</span>
-                                    <Download size={10} className="ml-1 opacity-50" />
-                                 </a>
-                               ))}
-                             </div>
-                          )}
-
-                        </div>
-                        <div className="md:text-right text-sm text-slate-500 dark:text-slate-400 flex flex-col justify-center min-w-[150px] border-t md:border-t-0 md:border-l border-slate-100 dark:border-slate-800 pt-4 md:pt-0 md:pl-6">
-                          <div className="flex items-center gap-2 md:justify-end font-medium text-slate-700 dark:text-slate-300">
-                            <Calendar size={16} className="text-blue-500" /> {action.dueDate}
-                          </div>
-                          <div className="mt-1">Owner: <span className="text-slate-700 dark:text-slate-300 font-medium">{action.owner}</span></div>
-                          
-                          {/* Edit Button */}
-                          {canEdit && (
-                            <div className="mt-3 flex md:justify-end">
-                               <button 
-                                 onClick={() => handleStartEditAction(action)}
-                                 className="flex items-center gap-1.5 text-xs font-bold text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors opacity-0 group-hover:opacity-100"
-                               >
-                                 <Edit2 size={12} /> Edit
-                               </button>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
+                                  <div className="flex items-center gap-4 text-xs text-slate-500 dark:text-slate-400 border-t border-slate-100 dark:border-slate-700 pt-2">
+                                     <span className="flex items-center gap-1"><UserIcon size={12} /> {action.owner}</span>
+                                     <span className="flex items-center gap-1"><Calendar size={12} /> Due: {action.dueDate}</span>
+                                  </div>
+                               </div>
+                            )}
+                         </div>
+                      ))}
+                   </div>
+                )}
+             </div>
           )}
 
-          {/* COMMENTS TAB */}
+          {/* Comments Tab */}
           {activeTab === 'comments' && (
-             <div className="flex flex-col h-full max-w-[95%] lg:max-w-5xl mx-auto">
-                <div className="flex-1 space-y-6 mb-8 overflow-y-auto">
-                   {comments.length === 0 ? (
-                      <div className="text-center py-12">
-                        <p className="text-slate-400 italic">No comments yet.</p>
+             <div className="flex flex-col h-full relative">
+                <div className="flex-1 overflow-y-auto pr-2 pb-24 space-y-6">
+                   {comments.filter(c => !c.parentId).length === 0 ? (
+                      <div className="flex flex-col items-center justify-center py-16 text-slate-400">
+                         <MessageSquare size={48} className="mb-4 text-slate-300 dark:text-slate-700" />
+                         <p>No discussion yet.</p>
+                         <p className="text-sm">Start the conversation by adding a comment below.</p>
                       </div>
                    ) : (
-                     // Render Top-Level Comments (no parentId)
-                     comments
-                       .filter(c => !c.parentId)
-                       .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-                       .map(c => (
-                         <CommentItem 
-                           key={c.id}
-                           comment={c} 
-                           allComments={comments} 
-                           currentUser={currentUser} 
-                           onDelete={onDeleteComment}
-                           onReply={onAddComment}
-                         />
-                       ))
+                      comments.filter(c => !c.parentId).sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map(comment => (
+                        <CommentItem 
+                          key={comment.id} 
+                          comment={comment} 
+                          allComments={comments} 
+                          currentUser={currentUser} 
+                          users={users}
+                          onDelete={onDeleteComment}
+                          onReply={(txt, pid) => onAddComment(txt, pid)}
+                          onLike={onLikeComment}
+                        />
+                      ))
                    )}
                 </div>
                 
-                {/* Main "Add Comment" box (Always creates top-level comment) */}
-                <div className="mt-auto pt-6 border-t border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-6 rounded-xl border shadow-sm sticky bottom-0">
-                  <h4 className="text-sm font-bold text-slate-700 dark:text-slate-300 mb-3">Add New Thread</h4>
-                  <div className="flex flex-col gap-3">
-                    <textarea 
-                      value={newComment}
-                      onChange={(e) => setNewComment(e.target.value)}
-                      placeholder="Start a new conversation..."
-                      rows={3}
-                      className="w-full p-3 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-slate-800 dark:text-white resize-none"
-                    />
-                    <div className="flex justify-end">
-                        <button 
-                          onClick={() => {
-                            if(newComment.trim()) {
-                              onAddComment(newComment); // Top-level
-                              setNewComment('');
-                            }
-                          }}
-                          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
-                        >
-                          <Send size={16} /> Post Comment
-                        </button>
-                    </div>
-                  </div>
+                {/* New Sticky Footer Input Layout */}
+                <div className="absolute bottom-0 left-0 right-0 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 pt-4 pb-2">
+                   <div className="bg-slate-50 dark:bg-slate-800/50 rounded-xl p-3 border border-slate-200 dark:border-slate-700 focus-within:ring-2 focus-within:ring-blue-100 dark:focus-within:ring-blue-900 transition-all shadow-sm">
+                      <div className="flex justify-between items-center mb-2 px-1">
+                         <span className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wide">New Comment / Feedback</span>
+                         <span className="text-xs text-slate-500 flex items-center gap-1">
+                            Posting as: <span className="font-bold text-blue-600 dark:text-blue-400">{currentUser.name}</span>
+                            <span className="px-1.5 py-0.5 bg-slate-200 dark:bg-slate-700 rounded text-[10px] font-bold">{currentUser.role}</span>
+                         </span>
+                      </div>
+                      <div className="flex gap-3">
+                         <div className="flex-1">
+                            <textarea 
+                              value={newComment}
+                              onChange={(e) => setNewComment(e.target.value)}
+                              className="w-full bg-transparent border-none focus:ring-0 text-sm text-slate-700 dark:text-slate-200 placeholder-slate-400 resize-none min-h-[40px]"
+                              placeholder="Add a formal comment or update..."
+                              rows={2}
+                              onKeyDown={(e) => {
+                                if(e.key === 'Enter' && !e.shiftKey) {
+                                  e.preventDefault();
+                                  if(newComment.trim()) {
+                                    onAddComment(newComment, undefined);
+                                    setNewComment('');
+                                  }
+                                }
+                              }}
+                            />
+                         </div>
+                         <button 
+                           onClick={() => {
+                             if(newComment.trim()) {
+                               onAddComment(newComment, undefined);
+                               setNewComment('');
+                             }
+                           }}
+                           disabled={!newComment.trim()}
+                           className={`p-2.5 rounded-lg transition-colors flex-shrink-0 self-end ${
+                             newComment.trim() 
+                               ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-md' 
+                               : 'bg-slate-200 dark:bg-slate-700 text-slate-400 cursor-not-allowed'
+                           }`}
+                         >
+                            <Send size={18} />
+                         </button>
+                      </div>
+                   </div>
                 </div>
              </div>
           )}
 
-          {/* ESCALATION TAB */}
+          {/* Escalation Tab - REDESIGNED */}
           {activeTab === 'escalation' && (
-            <div className="max-w-[95%] lg:max-w-4xl mx-auto space-y-8">
-               <div className="bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
-                  <div className="flex items-center gap-2 mb-2">
-                     <ShieldAlert size={20} className="text-orange-500" />
-                     <h3 className="text-lg font-bold text-slate-800 dark:text-white">Risk Escalation</h3>
-                  </div>
-                  <p className="text-sm text-slate-500 dark:text-slate-400">
-                     Escalate this risk to specific oversight groups or individuals. Escalated users will gain visibility and commenting rights to this risk without duplicating the record.
-                  </p>
-               </div>
+             <div className="space-y-6">
+                <div className="bg-orange-50 dark:bg-orange-900/20 p-4 rounded-xl border border-orange-200 dark:border-orange-800 flex gap-3 items-start">
+                   <ShieldAlert className="text-orange-600 flex-shrink-0" size={24} />
+                   <div>
+                      <h4 className="font-bold text-orange-800 dark:text-orange-300">Risk Escalation Protocol</h4>
+                      <p className="text-sm text-orange-700 dark:text-orange-400 mt-1">Escalating a risk notifies higher management and adds the risk to their oversight dashboard. Check the box to activate escalation.</p>
+                   </div>
+                </div>
 
-               <div className="grid gap-6">
-                 {ESCALATION_LEVELS.map(level => {
-                    const activeEscalations = formData.escalations?.filter(e => e.level === level) || [];
-                    
-                    return (
-                      <div key={level} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden transition-colors">
-                         <div className="px-6 py-4 bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center">
-                            <h4 className="font-bold text-slate-700 dark:text-slate-200">{level}</h4>
-                            <span className="text-xs font-mono text-slate-400 bg-white dark:bg-slate-800 px-2 py-0.5 rounded border border-slate-200 dark:border-slate-700">
-                               {activeEscalations.length} Users
-                            </span>
-                         </div>
+                <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm overflow-hidden">
+                   <div className="bg-slate-50 dark:bg-slate-800/80 px-6 py-3 border-b border-slate-200 dark:border-slate-700">
+                      <h4 className="font-bold text-slate-700 dark:text-slate-200 text-sm uppercase tracking-wide">Escalation Levels</h4>
+                   </div>
+                   
+                   <div className="divide-y divide-slate-100 dark:divide-slate-800">
+                      {ESCALATION_LEVELS.map(level => {
+                         // Check if this level is currently active (in formData)
+                         const activeEntries = formData.escalations?.filter(e => e.level === level) || [];
+                         const isChecked = activeEntries.length > 0;
                          
-                         <div className="p-6">
-                            {/* List Escalated Users */}
-                            {activeEscalations.length > 0 ? (
-                               <div className="flex flex-wrap gap-3 mb-4">
-                                  {activeEscalations.map(esc => (
-                                     <div key={esc.userId} className="flex items-center gap-2 pl-2 pr-2 py-1.5 bg-orange-50 dark:bg-orange-900/20 border border-orange-100 dark:border-orange-800 rounded-lg">
-                                        <div className="w-6 h-6 rounded-full bg-orange-200 dark:bg-orange-800 flex items-center justify-center text-xs font-bold text-orange-800 dark:text-orange-200">
-                                           {esc.userName.charAt(0)}
-                                        </div>
-                                        <div className="flex flex-col">
-                                           <span className="text-xs font-bold text-slate-700 dark:text-slate-200 leading-none">{esc.userName}</span>
-                                           <span className="text-[10px] text-slate-400 leading-none mt-0.5">Added {new Date(esc.date).toLocaleDateString()}</span>
-                                        </div>
-                                        {canEdit && (
-                                           <button 
-                                             onClick={() => handleRemoveEscalation(level, esc.userId)}
-                                             className="ml-1 p-1 hover:bg-red-100 dark:hover:bg-red-900/40 rounded text-slate-400 hover:text-red-500 transition-colors"
-                                           >
-                                              <X size={14} />
-                                           </button>
-                                        )}
-                                     </div>
-                                  ))}
-                               </div>
-                            ) : (
-                               <p className="text-sm text-slate-400 italic mb-4">No users escalated to this level.</p>
-                            )}
+                         // Determine default user for display if no active entries (so managers see who it WOULD go to)
+                         const defaultUser = getDefaultUserForLevel(level);
 
-                            {/* Add User Input */}
-                            {canEdit && (
-                               <div className="relative max-w-sm">
-                                  <div className="flex items-center gap-2">
+                         return (
+                            <div key={level} className={`p-4 transition-colors flex items-start md:items-center gap-4 ${isChecked ? 'bg-orange-50/50 dark:bg-orange-900/10' : 'hover:bg-slate-50 dark:hover:bg-slate-800/50'}`}>
+                               {/* Checkbox (Always visible, handles toggle) */}
+                               <div className="flex items-center h-full pt-1 md:pt-0">
+                                  <label className="relative inline-flex items-center cursor-pointer">
                                      <input 
-                                        type="text"
-                                        placeholder={`Add user to ${level}...`}
-                                        value={showEscalationList?.level === level ? escalationSearch : ''}
-                                        onChange={(e) => {
-                                           setEscalationSearch(e.target.value);
-                                           setShowEscalationList({ level, show: true });
-                                        }}
-                                        onFocus={() => {
-                                           setEscalationSearch('');
-                                           setShowEscalationList({ level, show: true });
-                                        }}
-                                        onBlur={() => setTimeout(() => setShowEscalationList(null), 200)}
-                                        className="flex-1 px-3 py-2 text-sm border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-orange-200 focus:border-orange-400 bg-white dark:bg-slate-800 dark:text-white"
+                                        type="checkbox" 
+                                        className="sr-only peer" 
+                                        checked={isChecked}
+                                        onChange={(e) => canEdit && handleToggleEscalation(level, e.target.checked)}
+                                        disabled={!canEdit}
                                      />
-                                     <button className="p-2 bg-slate-100 dark:bg-slate-800 text-slate-400 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700">
-                                        <Plus size={18} />
-                                     </button>
-                                  </div>
+                                     <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-orange-300 dark:peer-focus:ring-orange-800 rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-slate-600 peer-checked:bg-orange-600"></div>
+                                  </label>
+                               </div>
 
-                                  {/* User Dropdown */}
-                                  {showEscalationList?.level === level && showEscalationList.show && (
-                                     <div className="absolute top-full left-0 w-full mt-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-xl z-20 max-h-48 overflow-y-auto">
-                                        {users.filter(u => 
-                                           !activeEscalations.some(e => e.userId === u.id) && // Filter out already added
-                                           (u.name.toLowerCase().includes(escalationSearch.toLowerCase()) || u.email.toLowerCase().includes(escalationSearch.toLowerCase()))
-                                        ).length > 0 ? (
-                                           users.filter(u => 
-                                              !activeEscalations.some(e => e.userId === u.id) && 
-                                              (u.name.toLowerCase().includes(escalationSearch.toLowerCase()) || u.email.toLowerCase().includes(escalationSearch.toLowerCase()))
-                                           ).map(u => (
+                               {/* Level Info */}
+                               <div className="flex-1">
+                                  <h5 className={`font-bold text-sm ${isChecked ? 'text-slate-800 dark:text-white' : 'text-slate-500 dark:text-slate-400'}`}>{level}</h5>
+                                  <p className="text-xs text-slate-400">Authority Role: {level.replace('Escalation', '').replace('Profile', '').trim()}</p>
+                               </div>
+
+                               {/* User Display Area */}
+                               <div className="flex flex-col gap-2 min-w-[200px] items-end">
+                                  {/* List of Escalated Users */}
+                                  {activeEntries.length > 0 ? (
+                                     activeEntries.map(entry => (
+                                        <div key={entry.userId} className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border ${isChecked ? 'bg-white dark:bg-slate-900 border-orange-200 dark:border-orange-800' : 'bg-slate-100 dark:bg-slate-800 border-transparent opacity-60'}`}>
+                                           <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${isChecked ? 'bg-orange-100 text-orange-600' : 'bg-slate-200 text-slate-500'}`}>
+                                              {entry.userName.charAt(0)}
+                                           </div>
+                                           <div className="flex flex-col">
+                                              <span className={`text-sm font-medium leading-none ${isChecked ? 'text-slate-700 dark:text-slate-200' : 'text-slate-500'}`}>{entry.userName}</span>
+                                           </div>
+                                           {isAdmin && canEdit && (
                                               <button 
-                                                 key={u.id}
-                                                 onMouseDown={() => handleAddEscalation(level, u)} // Use onMouseDown to prevent blur before click
-                                                 className="w-full text-left px-4 py-2 text-sm hover:bg-orange-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 flex items-center gap-2 transition-colors border-b border-slate-50 dark:border-slate-700 last:border-0"
+                                                onClick={() => handleRemoveEscalationUser(entry.userId, level)}
+                                                className="ml-1 text-slate-400 hover:text-red-500 p-0.5 rounded"
+                                                title="Remove User"
                                               >
-                                                 <div className="w-6 h-6 rounded-full bg-slate-200 dark:bg-slate-600 flex items-center justify-center text-xs font-bold text-slate-600 dark:text-slate-200 shrink-0">{u.name.charAt(0)}</div>
-                                                 <div className="flex flex-col">
-                                                    <span className="font-medium leading-none">{u.name}</span>
-                                                    <span className="text-[10px] text-slate-400 leading-none mt-0.5">{u.role}</span>
-                                                 </div>
+                                                 <X size={12} />
                                               </button>
-                                           ))
+                                           )}
+                                        </div>
+                                     ))
+                                  ) : (
+                                     // Show Default Ghost User if unchecked
+                                     defaultUser && (
+                                       <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg border bg-slate-50 dark:bg-slate-800 border-dashed border-slate-300 dark:border-slate-700 opacity-60">
+                                          <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold bg-slate-200 text-slate-500">
+                                             {defaultUser.name.charAt(0)}
+                                          </div>
+                                          <div className="flex flex-col">
+                                             <span className="text-sm font-medium leading-none text-slate-500 italic">{defaultUser.name}</span>
+                                          </div>
+                                       </div>
+                                     )
+                                  )}
+
+                                  {/* Admin: Add User Button */}
+                                  {isAdmin && canEdit && isChecked && (
+                                     <div className="relative">
+                                        {activeEscalationLevel === level ? (
+                                           <div className="flex items-center gap-2 animate-fade-in">
+                                              <div className="relative">
+                                                 <input 
+                                                    autoFocus
+                                                    className="w-48 px-2 py-1 text-xs border border-blue-300 rounded shadow-sm outline-none"
+                                                    placeholder="Search user..."
+                                                    value={escalationSearch}
+                                                    onChange={(e) => setEscalationSearch(e.target.value)}
+                                                 />
+                                                 {/* Dropdown Results */}
+                                                 {escalationSearch && (
+                                                    <div className="absolute top-full right-0 mt-1 w-64 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-xl z-50 max-h-48 overflow-y-auto">
+                                                       {users.filter(u => u.name.toLowerCase().includes(escalationSearch.toLowerCase())).map(u => (
+                                                          <button 
+                                                             key={u.id}
+                                                             onClick={() => handleAddEscalationUser(u, level)}
+                                                             className="w-full text-left px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-700 text-xs text-slate-700 dark:text-slate-200 flex items-center justify-between"
+                                                          >
+                                                             <span>{u.name}</span>
+                                                             <span className="text-[10px] text-slate-400 bg-slate-100 dark:bg-slate-900 px-1 rounded">{u.role}</span>
+                                                          </button>
+                                                       ))}
+                                                    </div>
+                                                 )}
+                                              </div>
+                                              <button onClick={() => setActiveEscalationLevel(null)} className="text-slate-400 hover:text-slate-600"><X size={14} /></button>
+                                           </div>
                                         ) : (
-                                           <div className="px-4 py-3 text-xs text-slate-400 italic text-center">No matching users found</div>
+                                           <button 
+                                              onClick={() => setActiveEscalationLevel(level)}
+                                              className="text-xs flex items-center gap-1 text-blue-600 hover:text-blue-700 font-bold px-2 py-1 rounded hover:bg-blue-50 transition-colors"
+                                           >
+                                              <Plus size={12} /> Add Person
+                                           </button>
                                         )}
                                      </div>
                                   )}
                                </div>
-                            )}
-                         </div>
-                      </div>
-                    );
-                 })}
-               </div>
-            </div>
+                            </div>
+                         );
+                      })}
+                   </div>
+                </div>
+             </div>
           )}
 
-          {/* AUDIT TRAIL TAB */}
+          {/* History Tab */}
           {activeTab === 'history' && (
-            <div className="max-w-[95%] lg:max-w-4xl mx-auto">
-              <div className="mb-6 flex items-center justify-between">
-                 <h3 className="text-lg font-bold text-slate-800 dark:text-white">Audit Trail & History</h3>
-              </div>
-              
-              {!formData.history || formData.history.length === 0 ? (
-                 <div className="text-center py-16 border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-xl bg-slate-50 dark:bg-slate-800/50">
-                    <div className="text-4xl mb-4 text-slate-300">🕰️</div>
-                    <h4 className="text-lg font-medium text-slate-700 dark:text-slate-300">No history available</h4>
-                    <p className="text-slate-500 dark:text-slate-400">Changes to this risk will be logged here.</p>
-                 </div>
-              ) : (
-                <div className="relative pl-6 border-l border-slate-200 dark:border-slate-800 space-y-8">
-                  {formData.history.map((log) => (
-                    <div key={log.id} className="relative group">
-                       {/* Timeline Dot */}
-                       <div className="absolute -left-[29px] top-1.5 w-3.5 h-3.5 rounded-full bg-slate-300 dark:bg-slate-600 border-2 border-white dark:border-slate-900 group-hover:bg-blue-500 transition-colors"></div>
-                       
-                       <div className="bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm hover:shadow-md transition-shadow">
-                          <div className="flex items-center justify-between mb-2">
-                             <div className="flex items-center gap-2">
-                                <span className="text-sm font-bold text-slate-800 dark:text-white">{log.action}</span>
-                             </div>
-                             <span className="text-xs text-slate-400 font-mono flex items-center gap-1">
-                                <Clock size={12} />
-                                {new Date(log.date).toLocaleString()}
-                             </span>
-                          </div>
-                          
-                          <p className="text-sm text-slate-600 dark:text-slate-300 mb-3">
-                             {log.details}
-                          </p>
-                          
-                          <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800/50 px-2 py-1 rounded w-fit">
-                             <UserIcon size={12} />
-                             <span>Changed by <span className="font-medium text-slate-700 dark:text-slate-200">{log.user}</span></span>
-                          </div>
-                       </div>
-                    </div>
-                  ))}
+             <div className="space-y-6">
+                <div className="flex justify-between items-center">
+                   <h3 className="font-bold text-slate-800 dark:text-white">Audit Trail</h3>
+                   <span className="text-xs text-slate-500 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded">
+                      {formData.history?.length || 0} Records
+                   </span>
                 </div>
-              )}
-            </div>
+                
+                <div className="relative border-l-2 border-slate-200 dark:border-slate-700 ml-3 space-y-8">
+                   {(!formData.history || formData.history.length === 0) && (
+                      <div className="pl-6 text-slate-400 italic">No history recorded.</div>
+                   )}
+                   {formData.history?.map((log) => (
+                      <div key={log.id} className="relative pl-6">
+                         <div className="absolute -left-[9px] top-0 w-4 h-4 rounded-full bg-white dark:bg-slate-900 border-2 border-blue-500"></div>
+                         <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start mb-1">
+                            <span className="font-bold text-slate-800 dark:text-white text-sm">{log.action}</span>
+                            <span className="text-xs text-slate-400 flex items-center gap-1">
+                               <Clock size={12} /> {new Date(log.date).toLocaleString()}
+                            </span>
+                         </div>
+                         <p className="text-sm text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-800 p-3 rounded-lg border border-slate-100 dark:border-slate-700">
+                            {log.details}
+                         </p>
+                         <div className="mt-1 flex items-center gap-2 text-xs text-slate-500">
+                            <UserIcon size={12} />
+                            <span>by {log.user}</span>
+                         </div>
+                      </div>
+                   ))}
+                </div>
+             </div>
           )}
 
         </div>
 
-        {/* Delete Confirmation Modal */}
-        {showDeleteConfirm && (
-          <div className="absolute inset-0 z-[60] flex items-center justify-center bg-black/20 backdrop-blur-sm p-4 animate-fade-in">
-             <div className="bg-white dark:bg-slate-900 rounded-xl shadow-2xl p-6 max-w-sm w-full border border-red-200 dark:border-red-800 relative">
-                <div className="flex flex-col items-center text-center space-y-4">
-                   <div className="p-3 bg-red-100 dark:bg-red-900/20 rounded-full">
-                      <AlertTriangle size={24} className="text-red-600 dark:text-red-400" />
-                   </div>
-                   <h3 className="text-lg font-bold text-slate-800 dark:text-white">Delete Risk?</h3>
-                   <p className="text-slate-600 dark:text-slate-300 text-sm">
-                      Are you sure you want to delete this risk record? This action cannot be undone.
-                   </p>
-                   
-                   <div className="flex gap-3 w-full mt-2">
-                      <button 
-                         onClick={() => setShowDeleteConfirm(false)}
-                         className="flex-1 px-3 py-2 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-medium rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
-                      >
-                         Cancel
-                      </button>
-                      <button 
-                         onClick={() => {
-                            if (risk) onDelete(risk.id);
-                         }}
-                         className="flex-1 px-3 py-2 bg-red-600 text-white font-medium rounded-lg hover:bg-red-700 transition-colors"
-                      >
-                         Yes, Delete
-                      </button>
-                   </div>
-                </div>
-             </div>
-          </div>
-        )}
+        {/* Footer Actions if needed (like persistent save button on mobile) */}
+        <div className="p-4 border-t border-slate-200 dark:border-slate-800 md:hidden bg-white dark:bg-slate-900">
+           <button 
+             onClick={handleSaveWithAudit}
+             className="w-full py-3 bg-blue-600 text-white font-bold rounded-lg shadow-lg flex items-center justify-center gap-2"
+           >
+              <Save size={18} /> Save Changes
+           </button>
+        </div>
+
       </div>
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirm && (
+        <div className="absolute inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-fade-in">
+          <div className="bg-white dark:bg-slate-900 rounded-xl shadow-2xl p-6 max-w-sm w-full border-t-4 border-red-500 transform transition-all scale-100">
+            <div className="flex flex-col items-center text-center space-y-4">
+              <div className="p-3 bg-red-100 dark:bg-red-900/20 rounded-full">
+                <Trash2 size={32} className="text-red-600 dark:text-red-400" />
+              </div>
+              <h3 className="text-xl font-bold text-slate-800 dark:text-white">Delete Risk?</h3>
+              <p className="text-sm text-slate-600 dark:text-slate-300">
+                Are you sure you want to delete <span className="font-bold">{formData.id}</span>? This action cannot be undone.
+              </p>
+              
+              <div className="flex gap-3 w-full mt-2">
+                <button 
+                  onClick={() => setShowDeleteConfirm(false)}
+                  className="flex-1 px-4 py-2 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 font-bold rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={() => risk && onDelete(risk.id)}
+                  className="flex-1 px-4 py-2 bg-red-600 text-white font-bold rounded-lg hover:bg-red-700 transition-colors shadow-md"
+                >
+                  Yes, Delete
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
