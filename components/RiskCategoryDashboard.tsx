@@ -2,7 +2,7 @@
 import React, { useState, useMemo } from 'react';
 import { Risk, RiskCategory, ActionPlan, Comment, User } from '../types';
 import RiskList from './RiskList';
-import { X, Filter } from 'lucide-react';
+import { X, Filter, Plus } from 'lucide-react';
 import RiskHeatMap, { CellFilter } from './RiskHeatMap';
 
 interface Props {
@@ -12,9 +12,10 @@ interface Props {
   currentUser: User;
   onSelectRisk: (risk: Risk) => void;
   visibleColumns: string[]; // Receive prop
+  onNewRisk: () => void;
 }
 
-const RiskCategoryDashboard: React.FC<Props> = ({ risks, actions, comments, currentUser, onSelectRisk, visibleColumns }) => {
+const RiskCategoryDashboard: React.FC<Props> = ({ risks, actions, comments, currentUser, onSelectRisk, visibleColumns, onNewRisk }) => {
   const [activeFilter, setActiveFilter] = useState<CellFilter | null>(null);
 
   // Bucket Logic
@@ -103,8 +104,14 @@ const RiskCategoryDashboard: React.FC<Props> = ({ risks, actions, comments, curr
 
       {/* Filtered Table */}
       <div className="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden">
-        <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-800">
+        <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center">
           <h3 className="font-bold text-slate-800 dark:text-white">Risk Details</h3>
+          <button 
+            onClick={onNewRisk}
+            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg font-medium shadow-sm transition-all whitespace-nowrap text-xs"
+          >
+            <Plus size={14} /> New Risk
+          </button>
         </div>
         <RiskList 
           risks={filteredList}

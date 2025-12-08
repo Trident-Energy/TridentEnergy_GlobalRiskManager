@@ -1,7 +1,8 @@
 
+
 import React, { useState, useEffect } from 'react';
 import { Risk, Country, ActionPlan, User, RiskStatus, Comment } from '../types';
-import { calculateRiskScore, getRiskLevel, getControlRatingColor, COUNTRIES } from '../constants';
+import { calculateRiskScore, getRiskLevel, getControlRatingColor, COUNTRIES, ESCALATION_LEVELS } from '../constants';
 import { ChevronRight, ChevronLeft, ChevronRight as ChevronRightIcon, AlertTriangle, User as UserIcon, Users, ArrowUpDown, MessageSquare, ArrowUp, ArrowDown, Square, Triangle, ShieldAlert, AlertCircle } from 'lucide-react';
 import { SortOption } from '../App';
 
@@ -170,45 +171,16 @@ const RiskList: React.FC<Props> = ({ risks, actions, comments, currentUser, onSe
     return { count, hasNew };
   };
   
-  // Helper to calculate trend
+  // Helper to calculate trend logic
   const getRiskTrend = (risk: Risk) => {
-    if (risk.status === RiskStatus.OPEN) return 'new';
+    // If no previous score is set, we can't determine a trend yet (or it's a new risk from this cycle)
+    if (risk.previousScore === undefined || risk.previousScore === null) return 'new';
 
-    if (!risk.history || risk.history.length === 0) return 'stable';
+    const currentScore = calculateRiskScore(risk.residualImpact, risk.residualLikelihood);
+    const previousScore = risk.previousScore;
 
-    // Find latest impact/likelihood changes
-    const impactLog = risk.history.find(h => h.action.includes('Residual Impact Changed'));
-    const likelihoodLog = risk.history.find(h => h.action.includes('Residual Likelihood Changed'));
-
-    if (!impactLog && !likelihoodLog) return 'stable';
-
-    // Current Score
-    const currentScore = risk.residualImpact * risk.residualLikelihood;
-
-    // Previous Score Calculation
-    // We need to parse the "old" values from the logs.
-    // Format: "From 'X' to 'Y'"
-    const parseOldValue = (details: string): number | null => {
-      const match = details.match(/From '(\d+)'/);
-      return match ? parseInt(match[1]) : null;
-    };
-
-    let prevImpact = risk.residualImpact;
-    let prevLikelihood = risk.residualLikelihood;
-
-    if (impactLog) {
-       const old = parseOldValue(impactLog.details);
-       if (old !== null) prevImpact = old;
-    }
-    if (likelihoodLog) {
-       const old = parseOldValue(likelihoodLog.details);
-       if (old !== null) prevLikelihood = old;
-    }
-
-    const prevScore = prevImpact * prevLikelihood;
-
-    if (currentScore > prevScore) return 'increase';
-    if (currentScore < prevScore) return 'decrease';
+    if (currentScore > previousScore) return 'increase';
+    if (currentScore < previousScore) return 'decrease';
     return 'stable';
   };
 
@@ -217,7 +189,7 @@ const RiskList: React.FC<Props> = ({ risks, actions, comments, currentUser, onSe
     switch(trend) {
       case 'new':
         icon = <Triangle size={18} className="fill-purple-600 text-purple-600" />;
-        text = "New Risk";
+        text = "New Risk (No Baseline)";
         break;
       case 'increase':
         icon = <ArrowUp size={20} className="text-red-600 stroke-[3]" />;
@@ -245,12 +217,23 @@ const RiskList: React.FC<Props> = ({ risks, actions, comments, currentUser, onSe
     );
   };
 
-  // Helper to get user's escalation levels for a risk
-  const getUserEscalationLevels = (risk: Risk) => {
-    if (!risk.escalations) return [];
-    return risk.escalations
-      .filter(e => e.userId === currentUser.id || e.userName === currentUser.name)
-      .map(e => e.level);
+  // Helper to get the highest escalation level for the risk
+  const getHighestEscalationLevel = (risk: Risk): string | null => {
+    if (!risk.escalations || risk.escalations.length === 0) return null;
+    
+    // Find highest index in ESCALATION_LEVELS
+    let highestIndex = -1;
+    let highestLevel = null;
+
+    risk.escalations.forEach(e => {
+      const index = ESCALATION_LEVELS.indexOf(e.level);
+      if (index > highestIndex) {
+        highestIndex = index;
+        highestLevel = e.level;
+      }
+    });
+    
+    return highestLevel;
   };
 
   const SortHeader = ({ label, columnKey, width }: { label: string, columnKey: keyof Risk, width?: string }) => (
@@ -283,7 +266,7 @@ const RiskList: React.FC<Props> = ({ risks, actions, comments, currentUser, onSe
               {isVisible('functionArea') && <SortHeader label="Function/Area" columnKey="functionArea" width="w-48" />} {/* 7. Function/Area */}
               {isVisible('trend') && <th className="px-4 py-4 w-16 text-center">Trend</th>} {/* 8. Trend */}
               {isVisible('inherentScore') && <th className="px-4 py-4 w-40">Inherent Risk Score</th>} {/* 9. Inherent Risk Score */}
-              {isVisible('controlsRating') && <th className="px-4 py-4 w-32">Controls rating</th>} {/* 10. Controls Rating */}
+              {isVisible('controlsRating') && <th className="px-4 py-4 w-32">Controls Rating</th>} {/* 10. Controls Rating */}
               {isVisible('residualScore') && <th className="px-4 py-4 w-40">Residual Risk Score</th>} {/* 11. Residual Risk Score */}
               {isVisible('owner') && <SortHeader label="Risk Owner" columnKey="owner" width="w-40" />} {/* 12. Risk Owner */}
               {isVisible('status') && <SortHeader label="Risk Status" columnKey="status" width="w-32" />} {/* 13. Risk Status */}
@@ -314,9 +297,11 @@ const RiskList: React.FC<Props> = ({ risks, actions, comments, currentUser, onSe
                 
                 const isOwner = currentUser.name === risk.owner;
                 const isCollaborator = risk.collaborators.includes(currentUser.name);
+                // Determine if user is a reviewer based on escalation list
+                const isReviewer = risk.escalations?.some(e => e.userId === currentUser.id);
                 
-                // Get specific escalation levels for current user
-                const escalationLevels = getUserEscalationLevels(risk);
+                // Get highest active escalation level
+                const highestEscalation = getHighestEscalationLevel(risk);
 
                 const isClosed = risk.status === RiskStatus.CLOSED;
 
@@ -379,6 +364,11 @@ const RiskList: React.FC<Props> = ({ risks, actions, comments, currentUser, onSe
                               <Users size={12} /> Collab
                             </span>
                           )}
+                          {isReviewer && (
+                            <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-bold border ${isClosed ? 'bg-slate-100 dark:bg-slate-800 text-slate-500 border-slate-200 dark:border-slate-700' : 'bg-orange-50 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300 border-orange-100 dark:border-orange-800'}`}>
+                              <ShieldAlert size={12} /> Reviewer
+                            </span>
+                          )}
                         </div>
                       </td>
                     )}
@@ -398,7 +388,7 @@ const RiskList: React.FC<Props> = ({ risks, actions, comments, currentUser, onSe
 
                     {/* 6. Title */}
                     {isVisible('title') && (
-                      <td className="px-4 py-3 font-medium">
+                      <td className="px-4 py-3">
                         <div className="flex items-center gap-2">
                           <span className={isClosed ? 'line-through text-slate-400 dark:text-slate-500' : 'text-slate-800 dark:text-slate-200'}>
                             {risk.title}
@@ -497,19 +487,17 @@ const RiskList: React.FC<Props> = ({ risks, actions, comments, currentUser, onSe
                     {/* 15. Escalation Column */}
                     {isVisible('escalation') && (
                       <td className="px-4 py-3">
-                        <div className="flex flex-col items-start gap-1">
-                          {escalationLevels.map(level => (
-                            <span key={level} className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-bold border whitespace-nowrap ${isClosed ? 'bg-slate-100 dark:bg-slate-800 text-slate-500 border-slate-200 dark:border-slate-700' : 'bg-orange-50 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300 border-orange-100 dark:border-orange-800'}`}>
-                                <ShieldAlert size={10} /> {level}
+                         {highestEscalation && (
+                           <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-bold border whitespace-nowrap ${isClosed ? 'bg-slate-100 dark:bg-slate-800 text-slate-500 border-slate-200 dark:border-slate-700' : 'bg-orange-50 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300 border-orange-100 dark:border-orange-800'}`}>
+                                <ShieldAlert size={10} /> {highestEscalation}
                             </span>
-                          ))}
-                        </div>
+                         )}
                       </td>
                     )}
 
                     {/* 16. Creation Date */}
                     {isVisible('creationDate') && (
-                      <td className="px-4 py-3 text-xs text-slate-500 dark:text-slate-400 font-mono">
+                      <td className="px-4 py-3">
                         {risk.creationDate}
                       </td>
                     )}
@@ -523,7 +511,7 @@ const RiskList: React.FC<Props> = ({ risks, actions, comments, currentUser, onSe
 
                     {/* 18. Last Reviewer */}
                     {isVisible('lastReviewer') && (
-                      <td className="px-4 py-3 text-xs">
+                      <td className="px-4 py-3">
                         {risk.lastReviewer}
                       </td>
                     )}

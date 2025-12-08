@@ -1,7 +1,6 @@
 import React, { useMemo } from 'react';
 import { Risk, RiskStatus, User } from '../types';
-import { calculateRiskScore, getRiskLevel } from '../constants';
-import { CalendarOff, UserCheck, Users, BarChart as BarChartIcon, Filter, X, ShieldAlert } from 'lucide-react';
+import { UserCheck, Users, BarChart as BarChartIcon, Filter, X, ShieldAlert } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import RiskHeatMap, { CellFilter } from './RiskHeatMap';
 
@@ -114,7 +113,7 @@ const RiskDashboard: React.FC<Props> = ({
 
   return (
     <div className="flex flex-col gap-6 mb-6">
-      {/* Expanded Grid to 4 Columns to give maps more space */}
+      {/* Expanded Grid to 4 Columns */}
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
         
         {/* Left Column: Interactive Quick Filters (1 Column) */}
@@ -141,7 +140,7 @@ const RiskDashboard: React.FC<Props> = ({
           </div>
           <div className="flex-1">
             <InteractiveCard 
-              title="My Escalations" 
+              title="Reviewer" 
               value={stats.localEscalatedCount} 
               icon={<ShieldAlert className="text-orange-600 dark:text-orange-400" size={24} />} 
               color="bg-orange-100 dark:bg-orange-900" 
@@ -152,7 +151,6 @@ const RiskDashboard: React.FC<Props> = ({
         </div>
 
         {/* Center Column: All Risks Heat Maps (1 Column) */}
-        {/* Reverted to standard component usage to show header consistently */}
         <RiskHeatMap 
           title="All Residual Risks" 
           risks={risks}
@@ -162,7 +160,7 @@ const RiskDashboard: React.FC<Props> = ({
           className="lg:col-span-1 h-full min-h-[350px]"
         />
 
-        {/* Right Column: Consolidated Bar Chart (2 Columns) */}
+        {/* Center Right Column: Portfolio Chart (2 Columns) */}
         <div className="lg:col-span-2 bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 p-6 flex flex-col transition-colors h-full min-h-[350px]">
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center gap-3">

@@ -19,8 +19,8 @@ export const GROUPS = [
 export const ESCALATION_LEVELS = [
   EscalationLevel.FUNCTIONAL_MANAGER,
   EscalationLevel.TEML_FUNCTIONAL_REVIEW,
+  EscalationLevel.COUNTRY_MANAGER, // Moved before Leadership based on hierarchy
   EscalationLevel.TEML_LEADERSHIP,
-  EscalationLevel.COUNTRY_MANAGER,
   EscalationLevel.CORPORATE_RISK
 ];
 
@@ -63,12 +63,31 @@ export const LIKELIHOOD_OPTIONS = [
   { value: 5, label: '5 - Very Likely' },
 ];
 
+export const PRINCIPAL_RISKS_MAPPING: Record<RiskCategory, string[]> = {
+  [RiskCategory.STRATEGIC]: [
+    'Failure to secure new successful venture opportunities'
+  ],
+  [RiskCategory.OPERATIONAL]: [
+    'Risk of asset integrity breach or major production failure',
+    'Risk of failure to deliver operations, development and subsurface objectives',
+    'Risk of major cyber-attack and business continuity',
+    'Lack of adherence to Health, Safety and Environment policies',
+    'Failure to embed and deliver our environmental, social and governance (ESG) related plan'
+  ],
+  [RiskCategory.FINANCIAL]: [
+    'Risk of insufficient liquidity and funding capacity',
+    'Financial performance impacted by fluctuating oil and gas prices'
+  ],
+  [RiskCategory.COMPLIANCE]: [
+    'Control environment gaps leading to financial reporting, legal or regulatory non-compliance and ethical misconduct'
+  ]
+};
+
 export const PRINCIPAL_RISKS = [
-  'Risk of asset integrity breach or major production failure',
-  'Risk of failure to deliver operations, development and subsurface objectives',
-  'Risk of major cyber attack and business continuity',
-  'Lack of adherence to health, safety, environment and security policies',
-  'Not Applicable'
+  ...PRINCIPAL_RISKS_MAPPING[RiskCategory.STRATEGIC],
+  ...PRINCIPAL_RISKS_MAPPING[RiskCategory.OPERATIONAL],
+  ...PRINCIPAL_RISKS_MAPPING[RiskCategory.FINANCIAL],
+  ...PRINCIPAL_RISKS_MAPPING[RiskCategory.COMPLIANCE]
 ];
 
 // Full Risk Register to Function/Area Mapping
@@ -76,7 +95,7 @@ export const RISK_REGISTER_DATA = [
   { register: "CEO", functionArea: "Strategic and Entity Level risks (e.g. M&A)" },
   { register: "Business Development", functionArea: "Strategic and Entity Level risks (e.g. M&A)" },
   { register: "BR Country", functionArea: "Strategic and Entity Level risks (e.g. M&A)" },
-  { register: "GQ Country", functionArea: "Strategic and Entity Level risks (e.g. M&A)" }, // Updated text
+  { register: "EG Country", functionArea: "Strategic and Entity Level risks (e.g. M&A)" },
   { register: "Supply Chain", functionArea: "Supply Chain" },
   { register: "Comms", functionArea: "HR" },
   { register: "HR", functionArea: "HR" },
@@ -95,19 +114,18 @@ export const RISK_REGISTER_DATA = [
   { register: "Finance", functionArea: "Finance and Liquidity" },
   { register: "Treasury", functionArea: "Finance and Liquidity" },
   { register: "Tax", functionArea: "Finance and Liquidity" },
-  { register: "Integrity Brazil - Flag and Class including walkways Risk Register", functionArea: "Operations and Integrity" },
+  { register: "Integrity Brazil - Flag and Class including walkway", functionArea: "Operations and Integrity" },
   { register: "Integrity Brazil - General Maintenance Risk Register", functionArea: "Operations and Integrity" },
   { register: "Integrity Brazil - SGIP (Well Integrity) Risk Register", functionArea: "Operations and Integrity" },
   { register: "Integrity Brazil - SGSO Risk Register", functionArea: "Operations and Integrity" },
   { register: "Integrity Brazil - SGSS ( Subsea & pipeline integrity) Risk Register", functionArea: "Operations and Integrity" },
-  { register: "Integrity GQ - General Maintenance, SCE, Walkways, Accommodation Ceiba Risk Register", functionArea: "Operations and Integrity" }, // Updated
-  { register: "Integrity GQ - General Maintenance, SCE, Walkways, Accommodation Okume Risk Register", functionArea: "Operations and Integrity" }, // Updated
-  { register: "Integrity GQ - Subsea structures & Rotative equipment Risk Register", functionArea: "Operations and Integrity" }, // Updated
-  { register: "Integrity GQ - Top side, pipeline and Marine Structural Risk Register", functionArea: "Operations and Integrity" }, // Updated
-  { register: "Integrity GQ - Well integrity Risk Register", functionArea: "Operations and Integrity" }, // Updated
-  { register: "GQ Drilling Campaign (Project)", functionArea: "Projects" }, // Updated
+  { register: "Integrity EG - General Maintenance, SCE, Walkways", functionArea: "Operations and Integrity" },
+  { register: "Integrity EG - Subsea structures & Rotative equipment", functionArea: "Operations and Integrity" },
+  { register: "Integrity EG - Top side, pipeline and Marine Structures", functionArea: "Operations and Integrity" },
+  { register: "Integrity EG - Well integrity Risk Register", functionArea: "Operations and Integrity" },
+  { register: "EG Drilling Campaign (Project)", functionArea: "Projects" },
   { register: "Foxtrot Compression Project", functionArea: "Projects" },
-  { register: "Integrity GQ - General Maintenance, SCE, Walkways, Accommodation Risk Register", functionArea: "Operations and Integrity" }, // Updated
+  { register: "Integrity EG – General Maintenance, SCE, Walkways", functionArea: "Operations and Integrity" },
   { register: "Environmental, Social, and Governance (ESG)", functionArea: "HSE" },
   { register: "Subsea decommissioning", functionArea: "Projects" },
   { register: "BRAVO FSO Project", functionArea: "Projects" },
@@ -120,7 +138,8 @@ export const RISK_REGISTER_DATA = [
   { register: "P-65 Decommissioning", functionArea: "Projects" },
   { register: "FLNG", functionArea: "Projects" },
   { register: "BR Asset", functionArea: "Operations and Integrity" },
-  // Fallbacks for existing mock data
+  
+  // Fallbacks for existing mock data if needed
   { register: "UK Corporate", functionArea: "Strategic and Entity Level risks (e.g. M&A)" },
   { register: "Corporate", functionArea: "Strategic and Entity Level risks (e.g. M&A)" }
 ].sort((a, b) => a.register.localeCompare(b.register));
@@ -164,6 +183,29 @@ export const getControlRatingColor = (rating: string) => {
   }
 };
 
+// Numeric Mapping for Ratings (5-Star System)
+export const getRatingValue = (rating: ControlRating): number => {
+  switch(rating) {
+    case ControlRating.EXCELLENT: return 5;
+    case ControlRating.GOOD: return 4;
+    case ControlRating.FAIR: return 3;
+    case ControlRating.POOR: return 2;
+    case ControlRating.UNSATISFACTORY: return 1;
+    default: return 0;
+  }
+};
+
+export const getRatingFromValue = (value: number): ControlRating => {
+  switch(Math.round(value)) {
+    case 5: return ControlRating.EXCELLENT;
+    case 4: return ControlRating.GOOD;
+    case 3: return ControlRating.FAIR;
+    case 2: return ControlRating.POOR;
+    case 1: return ControlRating.UNSATISFACTORY;
+    default: return ControlRating.UNSATISFACTORY;
+  }
+};
+
 // Mock Data - Updated with New Roles
 export const MOCK_USERS: User[] = [
   { id: 'U1', name: 'Jane Doe', email: 'jane.doe@company.com', role: 'RMIA', groups: [] },
@@ -188,13 +230,19 @@ export const MOCK_RISKS: Risk[] = [
     owner: 'Francis Bidoul',
     functionArea: 'Operations and Integrity',
     category: RiskCategory.OPERATIONAL,
-    groupPrincipalRisk: 'Risk of asset integrity breach or major production failure',
+    groupPrincipalRisk: PRINCIPAL_RISKS_MAPPING[RiskCategory.OPERATIONAL][0],
     inherentImpact: 5,
     inherentLikelihood: 4, // 20
     controlsText: 'MFA enabled, quarterly training, email filtering.',
+    controls: [], // Filled at runtime if empty
     controlsRating: ControlRating.EXCELLENT,
     residualImpact: 1,
     residualLikelihood: 1, // Score 1 (Low)
+    previousScore: 2, // Was 2, now 1 (Decreased)
+    historicalScores: [
+      { date: '2024-01-01', score: 3, quarter: 'Q1 2024' },
+      { date: '2024-04-01', score: 2, quarter: 'Q2 2024' }
+    ],
     status: RiskStatus.REVIEWED,
     lastReviewDate: '7/11/2025',
     lastReviewer: 'Elodie Saurat',
@@ -216,13 +264,20 @@ export const MOCK_RISKS: Risk[] = [
     owner: 'Francis Bidoul',
     functionArea: 'Operations and Integrity',
     category: RiskCategory.OPERATIONAL,
-    groupPrincipalRisk: 'Risk of asset integrity breach or major production failure',
+    groupPrincipalRisk: PRINCIPAL_RISKS_MAPPING[RiskCategory.OPERATIONAL][0],
     inherentImpact: 4,
     inherentLikelihood: 5, // 20
     controlsText: 'Local warehousing of critical spares started.',
+    controls: [], 
     controlsRating: ControlRating.FAIR,
     residualImpact: 3,
     residualLikelihood: 4, // Score 12 (Moderate)
+    previousScore: 12, // Stable
+    historicalScores: [
+      { date: '2024-01-01', score: 10, quarter: 'Q1 2024' },
+      { date: '2024-04-01', score: 12, quarter: 'Q2 2024' },
+      { date: '2024-07-01', score: 12, quarter: 'Q3 2024' }
+    ],
     status: RiskStatus.REVIEWED,
     lastReviewDate: '',
     lastReviewer: 'Simon Grenville-Wood',
@@ -244,13 +299,15 @@ export const MOCK_RISKS: Risk[] = [
     owner: 'Francis Bidoul',
     functionArea: 'Operations and Integrity',
     category: RiskCategory.OPERATIONAL, 
-    groupPrincipalRisk: 'Risk of asset integrity breach or major production failure',
+    groupPrincipalRisk: PRINCIPAL_RISKS_MAPPING[RiskCategory.OPERATIONAL][0],
     inherentImpact: 5,
     inherentLikelihood: 4, // 20
     controlsText: 'Regular inspections scheduled.',
+    controls: [],
     controlsRating: ControlRating.POOR,
     residualImpact: 4,
     residualLikelihood: 4, // Score 16 (Significant)
+    previousScore: 12, // Was 12, now 16 (Increased)
     status: RiskStatus.REVIEWED,
     lastReviewDate: '7/11/2025',
     lastReviewer: 'Elodie Saurat',
@@ -270,13 +327,15 @@ export const MOCK_RISKS: Risk[] = [
     owner: 'Francis Bidoul',
     functionArea: 'Operations and Integrity',
     category: RiskCategory.OPERATIONAL,
-    groupPrincipalRisk: 'Risk of failure to deliver operations, development and subsurface objectives',
+    groupPrincipalRisk: PRINCIPAL_RISKS_MAPPING[RiskCategory.OPERATIONAL][1],
     inherentImpact: 4,
     inherentLikelihood: 3,
     controlsText: 'Maintenance overhaul planned.',
+    controls: [],
     controlsRating: ControlRating.GOOD,
     residualImpact: 3,
     residualLikelihood: 2,
+    previousScore: 6, // Stable
     status: RiskStatus.REVIEWED,
     lastReviewDate: '2024-01-15',
     lastReviewer: 'Francis Bidoul',
@@ -286,21 +345,22 @@ export const MOCK_RISKS: Risk[] = [
     ]
   },
   
-  // GQ Risks (Existing 2 + 2 New = 4 Total)
+  // EG Risks (Updated from GQ to match new register list names where possible)
   {
     id: 'GQ-0001',
     creationDate: '2024-02-15',
-    register: 'GQ Country',
+    register: 'EG Country',
     country: Country.GQ,
     title: 'Malabo Logistics Base Lease Renewal',
     description: 'Risk of significant rent increase or non-renewal of the primary logistics base lease in Malabo, potentially impacting supply chain continuity.',
     owner: 'Jane Doe',
     functionArea: 'Supply Chain',
     category: RiskCategory.STRATEGIC,
-    groupPrincipalRisk: 'Risk of failure to deliver operations, development and subsurface objectives',
+    groupPrincipalRisk: PRINCIPAL_RISKS_MAPPING[RiskCategory.STRATEGIC][0],
     inherentImpact: 4,
     inherentLikelihood: 3,
     controlsText: 'Early negotiations started. Alternative sites identified.',
+    controls: [],
     controlsRating: ControlRating.GOOD,
     residualImpact: 3,
     residualLikelihood: 2, // Score 6 -> Moderate
@@ -316,17 +376,18 @@ export const MOCK_RISKS: Risk[] = [
   {
     id: 'GQ-0002',
     creationDate: '2024-03-01',
-    register: 'Integrity GQ - Well integrity Risk Register',
+    register: 'Integrity EG - Well integrity Risk Register',
     country: Country.GQ,
     title: 'Zafiro Field - Aging Flowline Corrosion',
     description: 'Accelerated corrosion rates observed in sector 4 flowlines. Potential for leak if not replaced before next wet season.',
     owner: 'Amara Ndiaye',
     functionArea: 'Operations and Integrity',
     category: RiskCategory.OPERATIONAL,
-    groupPrincipalRisk: 'Risk of asset integrity breach or major production failure',
+    groupPrincipalRisk: PRINCIPAL_RISKS_MAPPING[RiskCategory.OPERATIONAL][0],
     inherentImpact: 5,
     inherentLikelihood: 4,
     controlsText: 'Corrosion inhibitor injection increased. Inspection frequency doubled.',
+    controls: [],
     controlsRating: ControlRating.FAIR,
     residualImpact: 4,
     residualLikelihood: 3,
@@ -346,10 +407,11 @@ export const MOCK_RISKS: Risk[] = [
     owner: 'Jane Doe',
     functionArea: 'Supply Chain',
     category: RiskCategory.OPERATIONAL,
-    groupPrincipalRisk: 'Risk of failure to deliver operations, development and subsurface objectives',
+    groupPrincipalRisk: PRINCIPAL_RISKS_MAPPING[RiskCategory.OPERATIONAL][1],
     inherentImpact: 3,
     inherentLikelihood: 4,
     controlsText: 'Fast-track clearance agent engaged. Inventory buffers increased.',
+    controls: [],
     controlsRating: ControlRating.GOOD,
     residualImpact: 3,
     residualLikelihood: 2, // Score 6 -> Moderate
@@ -369,10 +431,11 @@ export const MOCK_RISKS: Risk[] = [
     owner: 'Amara Ndiaye',
     functionArea: 'Compliance',
     category: RiskCategory.COMPLIANCE,
-    groupPrincipalRisk: 'Lack of adherence to health, safety, environment and security policies',
+    groupPrincipalRisk: PRINCIPAL_RISKS_MAPPING[RiskCategory.COMPLIANCE][0],
     inherentImpact: 4,
     inherentLikelihood: 3,
     controlsText: 'HR audit in progress. Recruitment drive planned.',
+    controls: [],
     controlsRating: ControlRating.FAIR,
     residualImpact: 3,
     residualLikelihood: 3, // Score 9 -> Moderate
@@ -394,10 +457,11 @@ export const MOCK_RISKS: Risk[] = [
     owner: 'Jane Doe',
     functionArea: 'Finance and Liquidity',
     category: RiskCategory.FINANCIAL,
-    groupPrincipalRisk: 'Lack of adherence to health, safety, environment and security policies',
+    groupPrincipalRisk: PRINCIPAL_RISKS_MAPPING[RiskCategory.FINANCIAL][1],
     inherentImpact: 4,
     inherentLikelihood: 4,
     controlsText: 'External tax counsel engaged. Pre-audit internal review completed.',
+    controls: [],
     controlsRating: ControlRating.GOOD,
     residualImpact: 3,
     residualLikelihood: 3, // Score 9 -> Moderate
@@ -417,10 +481,11 @@ export const MOCK_RISKS: Risk[] = [
     owner: 'Jean-Luc M',
     functionArea: 'Operations and Integrity',
     category: RiskCategory.OPERATIONAL,
-    groupPrincipalRisk: 'Risk of asset integrity breach or major production failure',
+    groupPrincipalRisk: PRINCIPAL_RISKS_MAPPING[RiskCategory.OPERATIONAL][0],
     inherentImpact: 3,
     inherentLikelihood: 4,
     controlsText: 'Spare parts expedited. Specialist technician mobilized.',
+    controls: [],
     controlsRating: ControlRating.POOR,
     residualImpact: 3,
     residualLikelihood: 3, // Score 9 -> Moderate
@@ -440,10 +505,11 @@ export const MOCK_RISKS: Risk[] = [
     owner: 'Jane Doe',
     functionArea: 'Finance and Liquidity',
     category: RiskCategory.FINANCIAL,
-    groupPrincipalRisk: 'Risk of failure to deliver operations, development and subsurface objectives',
+    groupPrincipalRisk: PRINCIPAL_RISKS_MAPPING[RiskCategory.FINANCIAL][0],
     inherentImpact: 4,
     inherentLikelihood: 4,
     controlsText: 'Meeting with Central Bank scheduled. Payment prioritization framework.',
+    controls: [],
     controlsRating: ControlRating.FAIR,
     residualImpact: 4,
     residualLikelihood: 3, // Score 12 -> Moderate
@@ -463,10 +529,11 @@ export const MOCK_RISKS: Risk[] = [
     owner: 'Jean-Luc M',
     functionArea: 'HSE',
     category: RiskCategory.STRATEGIC,
-    groupPrincipalRisk: 'Lack of adherence to health, safety, environment and security policies',
+    groupPrincipalRisk: PRINCIPAL_RISKS_MAPPING[RiskCategory.STRATEGIC][0],
     inherentImpact: 3,
     inherentLikelihood: 3, // Score 9 -> Moderate
     controlsText: 'Coast guard liaison strengthened. Radar monitoring enhanced.',
+    controls: [],
     controlsRating: ControlRating.GOOD,
     residualImpact: 2,
     residualLikelihood: 2, // Score 4 -> Low
@@ -481,6 +548,7 @@ export const MOCK_RISKS: Risk[] = [
 // Generate limited UK mock data (Only 5 items)
 for (let i = 0; i < 5; i++) {
   const seq = String(i + 1).padStart(4, '0');
+  const cat = i % 2 === 0 ? RiskCategory.OPERATIONAL : RiskCategory.FINANCIAL;
   MOCK_RISKS.push({
     id: `UK-${seq}`,
     creationDate: '2024-03-01',
@@ -490,14 +558,16 @@ for (let i = 0; i < 5; i++) {
     description: 'Standard corporate risk entry for UK operations.',
     owner: 'System Admin',
     functionArea: 'Strategic and Entity Level risks (e.g. M&A)',
-    category: i % 2 === 0 ? RiskCategory.OPERATIONAL : RiskCategory.FINANCIAL,
-    groupPrincipalRisk: 'Not Applicable',
+    category: cat,
+    groupPrincipalRisk: PRINCIPAL_RISKS_MAPPING[cat][0],
     inherentImpact: 3,
     inherentLikelihood: 3,
     controlsText: 'Standard controls.',
+    controls: [],
     controlsRating: ControlRating.GOOD,
     residualImpact: 2,
     residualLikelihood: 3, // Score 6 -> Moderate
+    previousScore: 6, // Stable
     status: RiskStatus.OPEN,
     lastReviewDate: '2023-11-01',
     lastReviewer: 'System',

@@ -102,6 +102,18 @@ export interface EscalationEntry {
   date: string;
 }
 
+export interface RiskControl {
+  id: string;
+  description: string;
+  rating: ControlRating;
+}
+
+export interface ScoreSnapshot {
+  date: string;
+  score: number;
+  quarter: string; // e.g. "Q1 2024"
+}
+
 export interface Risk {
   id: string;
   creationDate: string; // ISO Date "YYYY-MM-DD"
@@ -119,11 +131,16 @@ export interface Risk {
   inherentLikelihood: number; // 1-5
   
   // Residual
-  controlsText: string;
-  controlsRating: ControlRating;
+  controlsText: string; // Kept for backward compatibility/summary
+  controls: RiskControl[]; // Granular controls
+  controlsRating: ControlRating; // Overall/Average rating
   residualImpact: number; // 1-5
   residualLikelihood: number; // 1-5
   
+  // Trend Analysis
+  previousScore?: number; // Snapshot of the Residual Score from the previous review cycle
+  historicalScores?: ScoreSnapshot[]; // Last 4 quarters
+
   // Meta
   status: RiskStatus;
   lastReviewDate: string;

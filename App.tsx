@@ -1,3 +1,8 @@
+
+
+
+
+
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { LayoutDashboard, BarChart3, Settings, Search, Plus, User as UserIcon, LogOut, XCircle, Download, RefreshCw, AlertCircle, AlertTriangle, Moon, Sun, Grid2X2, Columns, CheckSquare, Square, EyeOff, Shield, BookOpen } from 'lucide-react';
 import RiskDashboard from './components/RiskDashboard';
@@ -5,9 +10,10 @@ import RiskList from './components/RiskList';
 import RiskDetail from './components/RiskDetail';
 import RiskCategoryDashboard from './components/RiskCategoryDashboard';
 import UserManagement from './components/UserManagement';
+import AdminBulkActions from './components/AdminBulkActions';
 import UserGuide from './components/UserGuide';
 import { MOCK_RISKS, MOCK_ACTIONS, MOCK_COMMENTS, COUNTRIES, MOCK_USERS, GROUPS, calculateRiskScore, getRiskLevel, AVAILABLE_COLUMNS } from './constants';
-import { Country, Risk, ActionPlan, Comment, User, RiskStatus, RiskLevel, AuditLogEntry, UserRole } from './types';
+import { Country, Risk, ActionPlan, Comment, User, RiskStatus, RiskLevel, AuditLogEntry, UserRole, EscalationLevel, ScoreSnapshot } from './types';
 import { CellFilter } from './components/RiskHeatMap';
 
 const NavItem = ({ icon, label, active, onClick }: any) => (
@@ -120,47 +126,30 @@ const App = () => {
   const uniqueFunctions = useMemo(() => Array.from(new Set(risks.map(r => r.functionArea))).sort(), [risks]);
   const uniqueLastReviewers = useMemo(() => Array.from(new Set(risks.map(r => r.lastReviewer))).filter(Boolean).sort(), [risks]);
 
-  // 1. Base Filtered Risks (Context for Dashboard Stats)
-  const dashboardRisks = useMemo(() => {
+  // 1. Authorized Risks (Permissions Only)
+  // This list contains everything the user is ALLOWED to see, ignoring UI filters (search, country, etc.)
+  // Used for global stats and activity feed.
+  const authorizedRisks = useMemo(() => {
     return risks.filter(r => {
-      // PERMISSION CHECK: VISIBILITY
+      // PERMISSION CHECK
       if (currentUser.role === 'RMIA') {
-        // RMIA sees ALL.
-      } else if (currentUser.role === 'Country Manager') {
-        // Country Manager sees risks from their country (determined by groups) OR risks they are involved in
-        
-        // Determine authorized countries based on Groups AND assigned Country
-        const authorizedCountries: Country[] = [];
-        if (currentUser.groups) {
-          if (currentUser.groups.includes('REG_BR')) authorizedCountries.push(Country.BR);
-          if (currentUser.groups.includes('REG_GQ')) authorizedCountries.push(Country.GQ);
-          if (currentUser.groups.includes('REG_CG')) authorizedCountries.push(Country.CG);
-        }
-        
-        // Fallback: Also include the primary country property if set
-        if (currentUser.country && !authorizedCountries.includes(currentUser.country)) {
-            authorizedCountries.push(currentUser.country);
-        }
-
-        const matchesCountry = authorizedCountries.includes(r.country);
-        const isOwner = r.owner === currentUser.name;
-        const isCollaborator = r.collaborators.includes(currentUser.name);
-        const isEscalated = (r.escalations || []).some(e => e.userId === currentUser.id);
-
-        if (!matchesCountry && !isOwner && !isCollaborator && !isEscalated) {
-          return false;
-        }
+        return true; // Admin sees all
       } else {
-         // Everyone else sees: Own OR Collaborator OR Escalated To Them
+         // Everyone else (including Country Manager) sees: Own OR Collaborator OR Escalated To Them
+         // The previous rule allowing Country Managers to see all risks for their country has been removed.
          const isOwner = r.owner === currentUser.name;
          const isCollaborator = r.collaborators.includes(currentUser.name);
          const isEscalated = (r.escalations || []).some(e => e.userId === currentUser.id);
          
-         if (!isOwner && !isCollaborator && !isEscalated) {
-           return false; // Hidden from user
-         }
+         return isOwner || isCollaborator || isEscalated;
       }
+    });
+  }, [risks, currentUser]);
 
+  // 2. Dashboard Risks (Filtered by UI controls)
+  // This list applies the user's current view filters (Search, Country Select, Dropdowns)
+  const dashboardRisks = useMemo(() => {
+    return authorizedRisks.filter(r => {
       // Country Filter
       const matchCountry = selectedCountry === 'ALL' || r.country === selectedCountry;
       
@@ -186,9 +175,9 @@ const App = () => {
 
       return matchCountry && matchSearch && matchOwner && matchRegister && matchFunction && matchStatus && matchLastReviewer && matchScore;
     });
-  }, [risks, selectedCountry, searchQuery, filterOwner, filterRegister, filterFunction, filterStatus, filterLastReviewer, filterScore, currentUser]);
+  }, [authorizedRisks, selectedCountry, searchQuery, filterOwner, filterRegister, filterFunction, filterStatus, filterLastReviewer, filterScore]);
 
-  // 2. List Risks (Context for the Grid)
+  // 3. List Risks (Context for the Grid)
   const listRisks = useMemo(() => {
     return dashboardRisks.filter(r => {
       // Dashboard HeatMap Filter
@@ -375,12 +364,135 @@ const App = () => {
     }
   };
 
+  // Admin Bulk Actions Handlers
+  const handleBulkEscalation = (country: Country, register: string, level: EscalationLevel, userId: string) => {
+     const user = users.find(u => u.id === userId);
+     if (!user) return;
+
+     setRisks(prev => prev.map(risk => {
+       // Filter by Country
+       if (risk.country !== country) return risk;
+
+       // Filter by Register
+       if (register !== 'ALL' && risk.register !== register) return risk;
+
+       // Check if already escalated to this level/user combination
+       const existingEscalation = risk.escalations?.find(e => e.level === level && e.userId === userId);
+       if (existingEscalation) return risk;
+
+       // Create new history entry
+       const timestamp = new Date().toISOString();
+       const logEntry: AuditLogEntry = {
+          id: `H-${Date.now()}-${Math.random()}`,
+          date: timestamp,
+          user: currentUser.name,
+          action: 'Bulk Escalation',
+          details: `Assigned ${user.name} as ${level} via bulk action`
+       };
+
+       return {
+         ...risk,
+         escalations: [...(risk.escalations || []), {
+            level,
+            userId: user.id,
+            userName: user.name,
+            date: timestamp
+         }],
+         history: [logEntry, ...(risk.history || [])]
+       };
+     }));
+     alert("Bulk escalation assignment completed.");
+  };
+
+  const handleBulkTransferOwnership = (fromUserId: string, toUserId: string) => {
+     const fromUser = users.find(u => u.id === fromUserId);
+     const toUser = users.find(u => u.id === toUserId);
+     if (!fromUser || !toUser) return;
+
+     setRisks(prev => prev.map(risk => {
+       if (risk.owner !== fromUser.name) return risk;
+
+       const timestamp = new Date().toISOString();
+       const logEntry: AuditLogEntry = {
+          id: `H-${Date.now()}-${Math.random()}`,
+          date: timestamp,
+          user: currentUser.name,
+          action: 'Owner Changed (Bulk)',
+          details: `From '${fromUser.name}' to '${toUser.name}'`
+       };
+
+       return {
+         ...risk,
+         owner: toUser.name,
+         history: [logEntry, ...(risk.history || [])]
+       };
+     }));
+     alert("Bulk ownership transfer completed.");
+  };
+
+  const handleBulkAddCollaborator = (country: Country, register: string, userId: string) => {
+    const user = users.find(u => u.id === userId);
+    if (!user) return;
+
+    setRisks(prev => prev.map(risk => {
+       if (risk.country !== country) return risk;
+       
+       // Filter by register if specific one selected
+       if (register !== 'ALL' && risk.register !== register) return risk;
+       
+       if (risk.collaborators.includes(user.name)) return risk; // Already exists
+
+       const timestamp = new Date().toISOString();
+       const logEntry: AuditLogEntry = {
+          id: `H-${Date.now()}-${Math.random()}`,
+          date: timestamp,
+          user: currentUser.name,
+          action: 'Collaborator Added (Bulk)',
+          details: `Added '${user.name}' as collaborator`
+       };
+
+       return {
+         ...risk,
+         collaborators: [...risk.collaborators, user.name],
+         history: [logEntry, ...(risk.history || [])]
+       };
+    }));
+    alert("Bulk collaborator assignment completed.");
+  };
+
   const handleResetRiskStatus = () => {
     setShowResetConfirm(true);
   };
 
+  // UPDATED: Execute Reset and Snapshots current scores for Trend Analysis (History of 4 quarters)
   const executeReset = () => {
-    setRisks(risks.map(r => ({ ...r, status: RiskStatus.OPEN })));
+    // Calculate current quarter string
+    const now = new Date();
+    const q = Math.floor((now.getMonth() + 3) / 3);
+    const quarterLabel = `Q${q} ${now.getFullYear()}`;
+
+    setRisks(risks.map(r => {
+      // 1. Calculate current residual score
+      const currentScore = calculateRiskScore(r.residualImpact, r.residualLikelihood);
+      
+      // 2. Create snapshot object
+      const snapshot: ScoreSnapshot = {
+        date: now.toISOString().split('T')[0],
+        score: currentScore,
+        quarter: quarterLabel
+      };
+
+      // 3. Manage history array (Limit to 4)
+      // Add new snapshot to the BEGINNING of array
+      const newHistory = [snapshot, ...(r.historicalScores || [])].slice(0, 4);
+
+      return {
+        ...r,
+        status: RiskStatus.OPEN, // Reset Status
+        previousScore: currentScore, // Keep simple previousScore for immediate arrow logic
+        historicalScores: newHistory // Capture full history for dashboards
+      };
+    }));
     setShowResetConfirm(false);
   };
 
@@ -669,7 +781,7 @@ const App = () => {
                                     ? <CheckSquare size={16} className="text-blue-600 dark:text-blue-400" />
                                     : <Square size={16} className="text-slate-300 dark:text-slate-600" />
                                   }
-                                  <span className={col.mandatory ? 'font-bold' : ''}>
+                                  <span className="font-bold">
                                     {col.label} {col.mandatory && <span className="text-[10px] text-slate-400 ml-1">(Required)</span>}
                                   </span>
                                   {!visibleColumns.includes(col.key) && <EyeOff size={14} className="ml-auto text-slate-300" />}
@@ -684,15 +796,6 @@ const App = () => {
                       className="flex items-center gap-2 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-600 px-4 py-2 rounded-lg font-medium shadow-sm transition-all whitespace-nowrap text-sm"
                     >
                       <Download size={18} /> Export
-                    </button>
-                    <button 
-                      onClick={() => {
-                        setSelectedRisk(null); // Create new
-                        setIsDetailOpen(true);
-                      }}
-                      className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium shadow-sm transition-all whitespace-nowrap text-sm"
-                    >
-                      <Plus size={18} /> New Risk
                     </button>
                 </div>
               </div>
@@ -765,18 +868,18 @@ const App = () => {
                     onChange={(e) => setSortOrder(e.target.value as SortOption)}
                     className="p-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-slate-50 dark:bg-slate-800 dark:text-slate-200 focus:bg-white dark:focus:bg-slate-700 focus:ring-2 focus:ring-blue-100 outline-none font-medium"
                   >
-                    <option value="newest">Newest First</option>
-                    <option value="oldest">Oldest First</option>
-                    <option value="last_reviewed_newest">Last Reviewed (Newest First)</option>
-                    <option value="last_reviewed_oldest">Last Reviewed (Oldest First)</option>
-                    <option value="highest_residual">Highest Residual Score</option>
-                    <option value="lowest_risk">Lowest Risk Score</option>
-                    <option value="escalations">Escalations First</option>
-                    <option value="ownership">Ownership</option>
-                    <option value="function">Function / Department</option>
-                    <option value="last_reviewer_az">Last Reviewer (A–Z)</option>
-                    <option value="last_reviewer_za">Last Reviewer (Z–A)</option>
-                    <option value="newest_comments">Newest Comments</option>
+                    <option value="newest">Sort by: Newest First</option>
+                    <option value="oldest">Sort by: Oldest First</option>
+                    <option value="last_reviewed_newest">Sort by: Last Reviewed (Newest)</option>
+                    <option value="last_reviewed_oldest">Sort by: Last Reviewed (Oldest)</option>
+                    <option value="highest_residual">Sort by: Highest Residual Score</option>
+                    <option value="lowest_risk">Sort by: Lowest Risk Score</option>
+                    <option value="escalations">Sort by: Escalations</option>
+                    <option value="ownership">Sort by: Ownership</option>
+                    <option value="function">Sort by: Function / Department</option>
+                    <option value="last_reviewer_az">Sort by: Last Reviewer (A–Z)</option>
+                    <option value="last_reviewer_za">Sort by: Last Reviewer (Z–A)</option>
+                    <option value="newest_comments">Sort by: Newest Comments</option>
                   </select>
 
                   {/* Clear Button */}
@@ -804,6 +907,19 @@ const App = () => {
                 activeHeatMapFilter={dashboardHeatMapFilter}
                 onHeatMapFilterChange={setDashboardHeatMapFilter}
               />
+
+              <div className="flex items-center justify-between">
+                <h3 className="font-bold text-slate-800 dark:text-white text-lg">Risk Register</h3>
+                <button 
+                  onClick={() => {
+                    setSelectedRisk(null); // Create new
+                    setIsDetailOpen(true);
+                  }}
+                  className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium shadow-sm transition-all whitespace-nowrap text-sm"
+                >
+                  <Plus size={18} /> New Risk
+                </button>
+              </div>
 
               {/* Risk List Table (Filtered by Quick Filter) */}
               <RiskList 
@@ -833,6 +949,10 @@ const App = () => {
                  setIsDetailOpen(true);
                }}
                visibleColumns={visibleColumns} // Pass columns
+               onNewRisk={() => {
+                 setSelectedRisk(null); // Create new
+                 setIsDetailOpen(true);
+               }}
              />
           )}
 
@@ -882,7 +1002,8 @@ const App = () => {
                     </h2>
                     <p className="text-slate-500 dark:text-slate-400 max-w-2xl">
                        Initiate a new risk review cycle. This action will reset the status of <strong>ALL risks</strong> in the database to <span className="font-bold text-blue-600 dark:text-blue-400">Open</span>. 
-                       This signals to Risk Owners that they need to review and update their risks.
+                       <br/>
+                       <span className="text-orange-600 dark:text-orange-400 font-bold">New:</span> This also takes a snapshot of all current scores to establish a new baseline for Trend Analysis.
                     </p>
                   </div>
                   <div className="p-4 bg-orange-50 dark:bg-orange-900/20 rounded-lg border border-orange-100 dark:border-orange-800 flex gap-4 items-start max-w-md">
@@ -905,6 +1026,17 @@ const App = () => {
                   </div>
                 </div>
               </div>
+
+               {/* Bulk Actions for Admins */}
+               {currentUser.role === 'RMIA' && (
+                  <AdminBulkActions 
+                    users={users}
+                    risks={risks}
+                    onBulkEscalate={handleBulkEscalation}
+                    onBulkTransferOwnership={handleBulkTransferOwnership}
+                    onBulkAddCollaborator={handleBulkAddCollaborator}
+                  />
+               )}
 
               {/* User Management */}
               <UserManagement 
@@ -951,7 +1083,7 @@ const App = () => {
                    <div className="text-slate-600 dark:text-slate-300 text-sm space-y-2">
                       <p>Are you sure you want to reset <strong>ALL</strong> risk statuses to 'Open'?</p>
                       <p className="text-xs text-orange-700 dark:text-orange-300 bg-orange-50 dark:bg-orange-900/20 p-2 rounded border border-orange-100 dark:border-orange-800">
-                         This will initiate a new Review Cycle for the entire organization and cannot be undone.
+                         This will also <strong>Snapshot</strong> all current risk scores for the current quarter to track trends over the last 4 cycles.
                       </p>
                    </div>
                    

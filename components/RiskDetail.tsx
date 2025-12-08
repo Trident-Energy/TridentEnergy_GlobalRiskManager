@@ -1,10 +1,14 @@
 
 
+
+
+
+
 import React, { useState, useEffect, useRef } from 'react';
-import { Risk, ActionPlan, Comment, RiskStatus, ControlRating, RiskCategory, Country, User, AuditLogEntry, Attachment, EscalationLevel, EscalationEntry, UserRole } from '../types';
-import { calculateRiskScore, getRiskLevel, COUNTRIES, IMPACT_OPTIONS, LIKELIHOOD_OPTIONS, PRINCIPAL_RISKS, RISK_REGISTER_DATA, ESCALATION_LEVELS } from '../constants';
+import { Risk, ActionPlan, Comment, RiskStatus, ControlRating, RiskCategory, Country, User, AuditLogEntry, Attachment, EscalationLevel, EscalationEntry, UserRole, RiskControl } from '../types';
+import { calculateRiskScore, getRiskLevel, COUNTRIES, IMPACT_OPTIONS, LIKELIHOOD_OPTIONS, PRINCIPAL_RISKS, PRINCIPAL_RISKS_MAPPING, RISK_REGISTER_DATA, ESCALATION_LEVELS, GROUPS, getRatingValue, getRatingFromValue } from '../constants';
 import { generateMitigationAdvice, improveRiskDescription } from '../services/geminiService';
-import { X, Save, MessageSquare, Plus, Sparkles, Calendar, ChevronDown, Trash2, Users, Search, AlertTriangle, Send, CornerDownRight, Edit2, History, Clock, User as UserIcon, Paperclip, FileText, Download, ShieldAlert, Shield, Check, Info, Lightbulb, AlertCircle, ArrowDown, Activity, CheckCircle, Target, UserCheck, Briefcase, ThumbsUp } from 'lucide-react';
+import { X, Save, MessageSquare, Plus, Sparkles, Calendar, ChevronDown, Trash2, Users, Search, AlertTriangle, Send, CornerDownRight, Edit2, History, Clock, User as UserIcon, Paperclip, FileText, Download, ShieldAlert, Shield, Check, Info, Lightbulb, AlertCircle, ArrowDown, Activity, CheckCircle, Target, UserCheck, Briefcase, ThumbsUp, Star, TrendingUp } from 'lucide-react';
 
 interface Props {
   risk: Risk | null; // null means 'New Risk'
@@ -40,8 +44,44 @@ const LIKELIHOOD_DEFINITIONS: Record<number, string> = {
   5: "Occurs monthly/quarterly (>75%)."
 };
 
+const STAR_TOOLTIPS: Record<number, string> = {
+  1: "Unsatisfactory - No effective controls",
+  2: "Poor - Weak or largely manual controls",
+  3: "Fair - Controls exist but inconsistent",
+  4: "Good - Effective with minor gaps",
+  5: "Excellent - Robust and tested controls"
+};
+
+// Helper: Star Rating Component
+const StarRating = ({ rating, onChange, readOnly = false }: { rating: ControlRating, onChange?: (r: ControlRating) => void, readOnly?: boolean }) => {
+  const numericValue = getRatingValue(rating);
+
+  return (
+    <div className="flex gap-1">
+      {[1, 2, 3, 4, 5].map((star) => (
+        <button
+          key={star}
+          type="button"
+          disabled={readOnly}
+          onClick={() => onChange && onChange(getRatingFromValue(star))}
+          className={`focus:outline-none transition-transform ${readOnly ? 'cursor-default' : 'cursor-pointer hover:scale-110'}`}
+          title={STAR_TOOLTIPS[star]}
+        >
+          <Star 
+            size={18} 
+            className={`${
+              star <= numericValue 
+                ? 'fill-amber-400 text-amber-400' 
+                : 'fill-slate-100 text-slate-300 dark:fill-slate-800 dark:text-slate-600'
+            }`} 
+          />
+        </button>
+      ))}
+    </div>
+  );
+};
+
 // Helper: Guidance Tooltip Component
-// Updated with custom color #325A78 and scoped group-hover
 const GuidanceTooltip = ({ title, content, placement = 'top' }: { title: string, content: React.ReactNode, placement?: 'top' | 'right' | 'left' }) => {
   // Base classes for the tooltip container with custom color
   const baseClasses = "absolute w-64 p-3 bg-[#325A78] text-white text-xs rounded-xl shadow-xl opacity-0 group-hover/tooltip:opacity-100 transition-opacity pointer-events-none z-[100] border border-[#26445a]";
@@ -282,30 +322,58 @@ const CommentItem: React.FC<CommentItemProps> = ({
 };
 
 const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave, onDelete, actions, onAddAction, onUpdateAction, onDeleteAction, comments, onAddComment, onDeleteComment, onLikeComment }) => {
+  
+  // Helper to generate unique ID based on country
+  const generateNewId = (countryCode: string) => {
+    const random = Math.floor(1000 + Math.random() * 9000); // 4 digit random number
+    return `${countryCode}-${random}`;
+  };
+
   // Local state for the form
-  const [formData, setFormData] = useState<Risk>({
-    id: `R-NEW-${Math.floor(Math.random()*1000)}`,
-    creationDate: new Date().toISOString().split('T')[0], // Default to today
-    register: 'BR Asset',
-    country: Country.UK,
-    title: '',
-    description: '',
-    owner: currentUser.name,
-    functionArea: 'Operations and Integrity',
-    category: RiskCategory.OPERATIONAL,
-    groupPrincipalRisk: PRINCIPAL_RISKS[4],
-    inherentImpact: 3,
-    inherentLikelihood: 3,
-    controlsText: '',
-    controlsRating: ControlRating.FAIR,
-    residualImpact: 3,
-    residualLikelihood: 3,
-    status: RiskStatus.OPEN,
-    lastReviewDate: new Date().toISOString().split('T')[0],
-    lastReviewer: currentUser.name,
-    collaborators: [],
-    history: [],
-    escalations: []
+  // Initialized properly with passed risk or defaults to ensure data persistence
+  const [formData, setFormData] = useState<Risk>(() => {
+    if (risk) {
+      // BACKWARD COMPATIBILITY: Convert old controlsText to new controls array if empty
+      const existingControls = risk.controls && risk.controls.length > 0 
+        ? risk.controls 
+        : (risk.controlsText ? [{ id: 'ctrl-init', description: risk.controlsText, rating: risk.controlsRating }] : []);
+      
+      return { 
+        ...risk,
+        controls: existingControls
+      };
+    }
+    
+    // Default New Risk
+    return {
+      id: generateNewId(Country.UK),
+      creationDate: new Date().toISOString().split('T')[0],
+      register: 'BR Asset',
+      country: Country.UK,
+      title: '',
+      description: '',
+      owner: currentUser.name,
+      functionArea: 'Operations and Integrity',
+      category: RiskCategory.OPERATIONAL,
+      groupPrincipalRisk: PRINCIPAL_RISKS_MAPPING[RiskCategory.OPERATIONAL][0],
+      inherentImpact: 3,
+      inherentLikelihood: 3,
+      controlsText: '',
+      controls: [{
+        id: `ctrl-${Date.now()}`,
+        description: '',
+        rating: ControlRating.FAIR 
+      }], 
+      controlsRating: ControlRating.FAIR,
+      residualImpact: 3,
+      residualLikelihood: 3,
+      status: RiskStatus.OPEN,
+      lastReviewDate: new Date().toISOString().split('T')[0],
+      lastReviewer: currentUser.name,
+      collaborators: [],
+      history: [],
+      escalations: []
+    };
   });
 
   const [aiLoading, setAiLoading] = useState(false);
@@ -361,6 +429,9 @@ const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave
   const [editingActionId, setEditingActionId] = useState<string | null>(null);
   const [editingActionData, setEditingActionData] = useState<ActionPlan | null>(null);
 
+  // Control Editing state to prevent averaging loop when manually overriding
+  const [userManuallySetRating, setUserManuallySetRating] = useState(false);
+
   // Close country dropdown on click outside
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -372,12 +443,19 @@ const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Initialize form if editing
+  // Initialize form if editing - Handle external updates (like history or status changes from list view)
   useEffect(() => {
     if (risk) {
       setFormData(prev => {
         // If the risk ID changed (different risk selected), strictly replace.
-        if (prev.id !== risk.id) return risk;
+        if (prev.id !== risk.id) {
+           // Ensure controls array exists
+           const existingControls = risk.controls && risk.controls.length > 0 
+           ? risk.controls 
+           : (risk.controlsText ? [{ id: 'ctrl-init', description: risk.controlsText, rating: risk.controlsRating }] : []);
+
+           return { ...risk, controls: existingControls };
+        }
         
         // Otherwise, we are likely receiving an update to the SAME risk (e.g. history update from side effect).
         // We want to keep current form values for fields the user is editing, but update history.
@@ -386,8 +464,33 @@ const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave
           history: risk.history, // Always take latest history
         };
       });
+      setUserManuallySetRating(false); // Reset on new risk load
     }
   }, [risk]);
+
+  // Effect: Auto-Calculate Average Control Rating
+  useEffect(() => {
+    if (!formData.controls || formData.controls.length === 0) return;
+    
+    // If the user has manually changed the dropdown recently, don't overwrite it immediately?
+    // Requirement says "Admin or owner can changed the proposed average value". 
+    // The easiest way is to calculate it, but if they change the dropdown, we set a flag to stop auto-calc until controls change again.
+    // However, usually adding a new control *should* trigger recalculation.
+    // Let's implement simpler logic: Always recalculate when controls change. User can override afterwards.
+    
+    const totalScore = formData.controls.reduce((acc, curr) => acc + getRatingValue(curr.rating), 0);
+    const avgScore = totalScore / formData.controls.length;
+    const calculatedRating = getRatingFromValue(avgScore);
+    
+    if (!userManuallySetRating) {
+      setFormData(prev => ({ ...prev, controlsRating: calculatedRating }));
+    } else {
+      // Reset the flag if the controls list length changes, assuming they want a new calculation
+      // But for now, let's keep it simple: Calculation happens on change.
+      setFormData(prev => ({ ...prev, controlsRating: calculatedRating }));
+    }
+
+  }, [formData.controls]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -401,9 +504,25 @@ const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave
          newData.lastReviewDate = today;
          newData.lastReviewer = currentUser.name;
       }
+
+      // Auto-update Principal Risk if Category changes
+      if (name === 'category') {
+        const newCategory = value as RiskCategory;
+        const availableOptions = PRINCIPAL_RISKS_MAPPING[newCategory];
+        if (availableOptions && availableOptions.length > 0) {
+          newData.groupPrincipalRisk = availableOptions[0];
+        } else {
+          newData.groupPrincipalRisk = '';
+        }
+      }
       
       return newData;
     });
+
+    if (name === 'controlsRating') {
+       setUserManuallySetRating(true);
+    }
+
     // Clear validation error if any
     if (validationError) setValidationError(null);
   };
@@ -429,7 +548,12 @@ const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave
   };
 
   const handleCountrySelect = (c: Country) => {
-    setFormData(prev => ({ ...prev, country: c }));
+    setFormData(prev => ({ 
+      ...prev, 
+      country: c,
+      // If updating a new risk, regenerate the ID to match the new country code
+      id: !risk ? generateNewId(c) : prev.id
+    }));
     setCountryOpen(false);
     if (validationError) setValidationError(null);
   };
@@ -446,6 +570,39 @@ const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave
     setFormData(prev => ({ ...prev, collaborators: prev.collaborators.filter(c => c !== name) }));
   };
 
+  // --- Control Management Handlers ---
+
+  const handleAddControl = () => {
+    const newControl: RiskControl = {
+      id: `ctrl-${Date.now()}`,
+      description: '',
+      rating: ControlRating.FAIR // Default
+    };
+    setFormData(prev => ({
+      ...prev,
+      controls: [...(prev.controls || []), newControl]
+    }));
+    setUserManuallySetRating(false); // Reset manual override so average updates
+  };
+
+  const handleDeleteControl = (id: string) => {
+    setFormData(prev => ({
+      ...prev,
+      controls: (prev.controls || []).filter(c => c.id !== id)
+    }));
+    setUserManuallySetRating(false);
+  };
+
+  const handleUpdateControl = (id: string, field: keyof RiskControl, value: any) => {
+    setFormData(prev => ({
+      ...prev,
+      controls: (prev.controls || []).map(c => c.id === id ? { ...c, [field]: value } : c)
+    }));
+    if (field === 'rating') {
+      setUserManuallySetRating(false); // Recalculate average on rating change
+    }
+  };
+
   // --- Escalation Logic with Checkbox & Admin Overrides ---
 
   // Helper: Find the "default" user for a given escalation level
@@ -458,8 +615,18 @@ const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave
      if (level === EscalationLevel.COUNTRY_MANAGER) targetRole = 'Country Manager';
      if (level === EscalationLevel.CORPORATE_RISK) targetRole = 'CEO'; // Or RMIA
 
-     // Simple search - find first user with that role
-     // In a real app, might filter by country too
+     // Smart Assignment: Prioritize users matching the risk's country
+     const riskCountry = formData.country;
+     const countryGroup = `REG_${riskCountry}`;
+     
+     const countryMatch = users.find(u => 
+        (u.role === targetRole || u.groups.includes(level)) && 
+        (u.country === riskCountry || u.groups.includes(countryGroup))
+     );
+
+     if (countryMatch) return countryMatch;
+
+     // Fallback: Find first user with role
      return users.find(u => u.role === targetRole || u.groups.includes(level));
   };
 
@@ -524,9 +691,15 @@ const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave
 
   const handleAcceptAiControls = () => {
     if (aiControlsSuggestion) {
+      // Add AI suggestion as a new control item instead of appending text
+      const newControl: RiskControl = {
+         id: `ctrl-ai-${Date.now()}`,
+         description: aiControlsSuggestion.text,
+         rating: ControlRating.FAIR // Default for new suggestion
+      };
       setFormData(prev => ({
         ...prev,
-        controlsText: (prev.controlsText ? prev.controlsText + '\n\n' : '') + aiControlsSuggestion.text
+        controls: [...(prev.controls || []), newControl]
       }));
       setAiControlsSuggestion(null);
     }
@@ -644,11 +817,15 @@ const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave
     const residualScore = calculateRiskScore(formData.residualImpact, formData.residualLikelihood);
 
     if (residualScore > inherentScore) {
-      setValidationError("Please correct risk scoring");
+      setValidationError("Please correct risk score as residual risk score cannot exceed inherent risk score");
       return;
     }
 
-    const newHistory: AuditLogEntry[] = [...(formData.history || [])];
+    // Sync controlsText for summary view (Legacy compatibility)
+    const summaryText = formData.controls.map(c => c.description).join('\n\n');
+    const finalFormData = { ...formData, controlsText: summaryText };
+
+    const newHistory: AuditLogEntry[] = [...(finalFormData.history || [])];
     const timestamp = new Date().toISOString();
     
     if (!risk) {
@@ -665,35 +842,39 @@ const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave
        const changes: { field: string, old: any, new: any }[] = [];
        
        // Compare all fields to capture granular details
-       if (risk.title !== formData.title) changes.push({ field: 'Title', old: risk.title, new: formData.title });
-       if (risk.register !== formData.register) changes.push({ field: 'Risk Register', old: risk.register, new: formData.register });
-       if (risk.country !== formData.country) changes.push({ field: 'Country', old: risk.country, new: formData.country });
-       if (risk.owner !== formData.owner) changes.push({ field: 'Risk Owner', old: risk.owner, new: formData.owner });
-       if (risk.functionArea !== formData.functionArea) changes.push({ field: 'Function/Area', old: risk.functionArea, new: formData.functionArea });
-       if (risk.category !== formData.category) changes.push({ field: 'Risk Category', old: risk.category, new: formData.category });
-       if (risk.groupPrincipalRisk !== formData.groupPrincipalRisk) changes.push({ field: 'Principal Risk', old: risk.groupPrincipalRisk, new: formData.groupPrincipalRisk });
+       if (risk.title !== finalFormData.title) changes.push({ field: 'Title', old: risk.title, new: finalFormData.title });
+       if (risk.register !== finalFormData.register) changes.push({ field: 'Risk Register', old: risk.register, new: finalFormData.register });
+       if (risk.country !== finalFormData.country) changes.push({ field: 'Country', old: risk.country, new: finalFormData.country });
+       if (risk.owner !== finalFormData.owner) changes.push({ field: 'Risk Owner', old: risk.owner, new: finalFormData.owner });
+       if (risk.functionArea !== finalFormData.functionArea) changes.push({ field: 'Function/Area', old: risk.functionArea, new: finalFormData.functionArea });
+       if (risk.category !== finalFormData.category) changes.push({ field: 'Risk Category', old: risk.category, new: finalFormData.category });
+       if (risk.groupPrincipalRisk !== finalFormData.groupPrincipalRisk) changes.push({ field: 'Principal Risk', old: risk.groupPrincipalRisk, new: finalFormData.groupPrincipalRisk });
        
-       if (risk.description !== formData.description) changes.push({ field: 'Description', old: 'Updated', new: 'Updated' });
-       if (risk.controlsText !== formData.controlsText) changes.push({ field: 'Controls/Mitigation', old: 'Updated', new: 'Updated' });
+       if (risk.description !== finalFormData.description) changes.push({ field: 'Description', old: 'Updated', new: 'Updated' });
        
-       if (risk.controlsRating !== formData.controlsRating) changes.push({ field: 'Control Rating', old: risk.controlsRating, new: formData.controlsRating });
-       if (risk.inherentImpact !== formData.inherentImpact) changes.push({ field: 'Inherent Impact', old: risk.inherentImpact, new: formData.inherentImpact });
-       if (risk.inherentLikelihood !== formData.inherentLikelihood) changes.push({ field: 'Inherent Likelihood', old: risk.inherentLikelihood, new: formData.inherentLikelihood });
-       if (risk.residualImpact !== formData.residualImpact) changes.push({ field: 'Residual Impact', old: risk.residualImpact, new: formData.residualImpact });
-       if (risk.residualLikelihood !== formData.residualLikelihood) changes.push({ field: 'Residual Likelihood', old: risk.residualLikelihood, new: formData.residualLikelihood });
+       // Detect Controls Changes (Deep check or simple length check)
+       if (JSON.stringify(risk.controls) !== JSON.stringify(finalFormData.controls)) {
+          changes.push({ field: 'Controls/Mitigation', old: 'Updated', new: 'Updated' });
+       }
+       
+       if (risk.controlsRating !== finalFormData.controlsRating) changes.push({ field: 'Control Rating', old: risk.controlsRating, new: finalFormData.controlsRating });
+       if (risk.inherentImpact !== finalFormData.inherentImpact) changes.push({ field: 'Inherent Impact', old: risk.inherentImpact, new: finalFormData.inherentImpact });
+       if (risk.inherentLikelihood !== finalFormData.inherentLikelihood) changes.push({ field: 'Inherent Likelihood', old: risk.inherentLikelihood, new: finalFormData.inherentLikelihood });
+       if (risk.residualImpact !== finalFormData.residualImpact) changes.push({ field: 'Residual Impact', old: risk.residualImpact, new: finalFormData.residualImpact });
+       if (risk.residualLikelihood !== finalFormData.residualLikelihood) changes.push({ field: 'Residual Likelihood', old: risk.residualLikelihood, new: finalFormData.residualLikelihood });
 
-       if (risk.status !== formData.status) changes.push({ field: 'Status', old: risk.status, new: formData.status });
+       if (risk.status !== finalFormData.status) changes.push({ field: 'Status', old: risk.status, new: finalFormData.status });
 
        // Compare Collaborators (Sort to ignore order)
        const oldCollabs = [...(risk.collaborators || [])].sort().join(', ');
-       const newCollabs = [...(formData.collaborators || [])].sort().join(', ');
+       const newCollabs = [...(finalFormData.collaborators || [])].sort().join(', ');
        if (oldCollabs !== newCollabs) {
            changes.push({ field: 'Collaborators', old: oldCollabs || 'None', new: newCollabs || 'None' });
        }
        
        // Detect Escalation Changes
        const oldEsc = JSON.stringify(risk.escalations || []);
-       const newEsc = JSON.stringify(formData.escalations || []);
+       const newEsc = JSON.stringify(finalFormData.escalations || []);
        if (oldEsc !== newEsc) {
          changes.push({ field: 'Escalation', old: 'Updated', new: 'Updated' });
        }
@@ -704,7 +885,7 @@ const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave
           // Custom detail messages for text blocks or lists
           if (change.field === 'Escalation') details = 'Escalation list updated';
           if (change.field === 'Description') details = 'Risk Description updated';
-          if (change.field === 'Controls/Mitigation') details = 'Controls text updated';
+          if (change.field === 'Controls/Mitigation') details = 'Controls list updated';
 
           newHistory.unshift({
              id: `H-${Date.now()}-${Math.random()}`,
@@ -716,7 +897,7 @@ const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave
        });
     }
     
-    onSave({ ...formData, history: newHistory });
+    onSave({ ...finalFormData, history: newHistory });
   };
 
   const inherentScore = calculateRiskScore(formData.inherentImpact, formData.inherentLikelihood);
@@ -724,6 +905,9 @@ const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave
   
   const residualScore = calculateRiskScore(formData.residualImpact, formData.residualLikelihood);
   const residualLevel = getRiskLevel(residualScore, formData.residualImpact);
+
+  // Dynamic Validation Check for Scoring (Residual > Inherent)
+  const isScoringInvalid = residualScore > inherentScore;
 
   const selectedCountry = COUNTRIES.find(c => c.code === formData.country);
 
@@ -825,7 +1009,7 @@ const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave
                <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
                   <div className="px-6 py-3 bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 flex items-center gap-2 rounded-t-xl">
                      <FileText size={18} className="text-blue-600 dark:text-blue-400" />
-                     <h3 className="font-bold text-slate-800 dark:text-slate-200 text-sm uppercase tracking-wide">1. Risk Identification</h3>
+                     <h3 className="font-bold text-slate-800 dark:text-slate-200 text-sm tracking-wide">1. Risk Identification</h3>
                   </div>
                   <div className="p-6 space-y-6">
                     {/* Title */}
@@ -845,7 +1029,7 @@ const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave
                       />
                     </div>
 
-                    {/* Metadata Grid */}
+                    {/* Meta Grid */}
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                        {/* Country */}
                        <div>
@@ -943,9 +1127,9 @@ const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave
                           </select>
                        </div>
 
-                       {/* Category */}
+                       {/* Risk Category */}
                        <div>
-                          <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Category</label>
+                          <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Risk Category</label>
                           <select 
                             name="category"
                             value={formData.category}
@@ -954,6 +1138,22 @@ const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave
                             className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white dark:bg-slate-800 dark:text-white"
                           >
                              {Object.values(RiskCategory).map(c => <option key={c} value={c}>{c}</option>)}
+                          </select>
+                       </div>
+
+                       {/* Principal Risk */}
+                       <div>
+                          <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Principal Risk</label>
+                          <select
+                            name="groupPrincipalRisk"
+                            value={formData.groupPrincipalRisk}
+                            onChange={handleInputChange}
+                            disabled={!canEdit}
+                            className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white dark:bg-slate-800 dark:text-white"
+                          >
+                             {(PRINCIPAL_RISKS_MAPPING[formData.category] || []).map(pr => (
+                               <option key={pr} value={pr} title={pr}>{pr}</option>
+                             ))}
                           </select>
                        </div>
                     </div>
@@ -1012,7 +1212,7 @@ const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave
 
                {/* SCORING FLOW SECTION */}
                <div className="space-y-6">
-                  <div className="flex items-center gap-2 text-slate-400 font-bold uppercase text-xs tracking-wider px-2">
+                  <div className="flex items-center gap-2 text-slate-400 font-bold text-xs tracking-wider px-2">
                      <Shield size={14} /> Risk Assessment & Mitigation
                   </div>
 
@@ -1022,7 +1222,7 @@ const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave
                      <div className="px-6 py-3 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center rounded-t-xl">
                         <div className="flex items-center gap-2">
                            <AlertTriangle size={18} className="text-slate-500 dark:text-slate-400" />
-                           <h4 className="font-bold text-slate-700 dark:text-slate-300 text-sm uppercase flex items-center">
+                           <h4 className="font-bold text-slate-700 dark:text-slate-300 text-sm flex items-center">
                               2. Inherent Risk
                               <GuidanceTooltip title="Inherent Risk" content="The level of risk before any controls or mitigations are applied. Represents the worst-case scenario." />
                            </h4>
@@ -1032,7 +1232,7 @@ const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave
                      <div className="p-6">
                         <div className="grid grid-cols-2 gap-6">
                            <div>
-                              <label className="block text-xs font-bold text-slate-500 uppercase mb-2 flex items-center">
+                              <label className="block text-xs font-bold text-slate-500 mb-2 flex items-center">
                                  Impact
                                  <GuidanceTooltip title="Impact Scale (Severity)" content={GUIDANCE_IMPACT} placement="right" />
                               </label>
@@ -1050,7 +1250,7 @@ const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave
                               </p>
                            </div>
                            <div>
-                              <label className="block text-xs font-bold text-slate-500 uppercase mb-2 flex items-center">
+                              <label className="block text-xs font-bold text-slate-500 mb-2 flex items-center">
                                  Likelihood
                                  <GuidanceTooltip title="Likelihood Scale (Probability)" content={GUIDANCE_LIKELIHOOD} placement="left" />
                               </label>
@@ -1078,13 +1278,16 @@ const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave
                      </div>
                   </div>
 
-                  {/* Step 2: Controls & Mitigation */}
+                  {/* Step 2: Controls & Mitigation - EXPANDED */}
                   <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 relative shadow-sm">
                       <div className="absolute top-0 left-0 w-1 h-full bg-blue-500 rounded-l-xl"></div>
                       <div className="px-6 py-3 bg-blue-50/50 dark:bg-blue-900/10 border-b border-blue-100 dark:border-blue-900/30 flex justify-between items-center rounded-t-xl">
                          <div className="flex items-center gap-2">
                            <Shield size={18} className="text-blue-600 dark:text-blue-400" />
-                           <h4 className="font-bold text-slate-700 dark:text-slate-300 text-sm uppercase">3. Controls & Mitigation</h4>
+                           <h4 className="font-bold text-slate-700 dark:text-slate-300 text-sm flex items-center">
+                             3. Controls & Mitigation
+                             <GuidanceTooltip title="Controls & Mitigation" content="Barriers, processes, or systems currently in place to reduce the likelihood or impact of the risk." />
+                           </h4>
                          </div>
                          {canEdit && (
                            <button 
@@ -1120,30 +1323,67 @@ const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave
                             </div>
                          )}
 
-                         <div className="mb-4">
-                           <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Controls Description</label>
-                           <textarea 
-                             name="controlsText"
-                             value={formData.controlsText}
-                             onChange={handleInputChange}
-                             disabled={!canEdit}
-                             rows={4}
-                             className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white dark:bg-slate-800 dark:text-white"
-                             placeholder="List existing controls and mitigation strategies..."
-                           />
+                         <div className="mb-4 space-y-3">
+                            <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Controls List</label>
+                            
+                            {(!formData.controls || formData.controls.length === 0) && (
+                               <div className="text-sm text-slate-400 italic text-center py-4 bg-slate-50 dark:bg-slate-800 rounded-lg border border-dashed border-slate-300 dark:border-slate-700">
+                                  No controls added. Add a control to reduce risk.
+                               </div>
+                            )}
+
+                            {formData.controls?.map((control) => (
+                               <div key={control.id} className="flex flex-col sm:flex-row gap-3 items-start sm:items-center bg-slate-50 dark:bg-slate-800/50 p-3 rounded-lg border border-slate-200 dark:border-slate-700">
+                                  <div className="flex-1 w-full">
+                                     <input 
+                                       type="text"
+                                       placeholder="Describe control (e.g., Daily Backups)"
+                                       value={control.description}
+                                       onChange={(e) => handleUpdateControl(control.id, 'description', e.target.value)}
+                                       disabled={!canEdit}
+                                       className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg text-sm bg-white dark:bg-slate-800 dark:text-white"
+                                     />
+                                  </div>
+                                  <div className="flex items-center gap-4 w-full sm:w-auto justify-between sm:justify-end">
+                                     <StarRating 
+                                       rating={control.rating} 
+                                       onChange={(r) => handleUpdateControl(control.id, 'rating', r)}
+                                       readOnly={!canEdit}
+                                     />
+                                     {canEdit && (
+                                        <button 
+                                          onClick={() => handleDeleteControl(control.id)}
+                                          className="text-slate-400 hover:text-red-500 transition-colors"
+                                          title="Remove Control"
+                                        >
+                                           <Trash2 size={16} />
+                                        </button>
+                                     )}
+                                  </div>
+                               </div>
+                            ))}
+
+                            {canEdit && (
+                               <button 
+                                 onClick={handleAddControl}
+                                 className="flex items-center gap-2 text-xs font-bold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 px-3 py-2 rounded-lg transition-colors border border-dashed border-blue-300 dark:border-blue-700 w-full justify-center"
+                               >
+                                  <Plus size={14} /> Add Control
+                               </button>
+                            )}
                          </div>
 
-                         <div>
-                            <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2 flex items-center">
-                               Controls Rating
-                               <GuidanceTooltip title="Controls Effectiveness" content={GUIDANCE_CONTROLS} />
+                         <div className="pt-4 border-t border-slate-200 dark:border-slate-700">
+                            <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2 flex items-center justify-between">
+                               <span>Controls Rating (Average)</span>
+                               <span className="text-xs font-normal text-slate-500">Calculated from individual controls</span>
                             </label>
                             <select 
                               name="controlsRating"
                               value={formData.controlsRating}
                               onChange={handleInputChange}
                               disabled={!canEdit}
-                              className="w-full md:w-1/2 px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white dark:bg-slate-800 dark:text-white"
+                              className="w-full md:w-1/2 px-4 py-2 border-2 border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white dark:bg-slate-800 dark:text-white font-bold"
                             >
                                {Object.values(ControlRating).map(r => <option key={r} value={r}>{r}</option>)}
                             </select>
@@ -1159,22 +1399,31 @@ const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave
                   </div>
 
                   {/* Step 3: Residual Risk */}
-                  <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 relative shadow-sm ring-1 ring-slate-100 dark:ring-slate-800">
-                     <div className="absolute top-0 left-0 w-1 h-full bg-purple-500 rounded-l-xl"></div>
+                  <div className={`bg-white dark:bg-slate-800 rounded-xl border relative shadow-sm ring-1 ring-slate-100 dark:ring-slate-800 ${isScoringInvalid ? 'border-red-300 dark:border-red-700' : 'border-slate-200 dark:border-slate-700'}`}>
+                     <div className={`absolute top-0 left-0 w-1 h-full rounded-l-xl ${isScoringInvalid ? 'bg-red-500' : 'bg-purple-500'}`}></div>
                      <div className="px-6 py-3 bg-purple-50/50 dark:bg-purple-900/10 border-b border-purple-100 dark:border-purple-900/30 flex justify-between items-center rounded-t-xl">
                         <div className="flex items-center gap-2">
                           <Activity size={18} className="text-purple-600 dark:text-purple-400" />
-                          <h4 className="font-bold text-slate-700 dark:text-slate-300 text-sm uppercase flex items-center">
+                          <h4 className="font-bold text-slate-700 dark:text-slate-300 text-sm flex items-center">
                              4. Residual Risk
                              <GuidanceTooltip title="Residual Risk" content="The remaining risk level after applying the current controls. This is the 'Actual' risk exposure." />
                           </h4>
+                          {isScoringInvalid && (
+                             <div className="group/error relative inline-flex items-center ml-2">
+                                <AlertCircle size={18} className="text-red-500 fill-red-50 dark:fill-red-900/20" />
+                                <div className="absolute left-full top-1/2 -translate-y-1/2 ml-2 w-max max-w-[250px] px-3 py-2 bg-slate-800 text-white text-xs rounded opacity-0 group-hover/error:opacity-100 z-50 pointer-events-none transition-opacity shadow-xl whitespace-normal text-left">
+                                   Error: Residual risk score cannot exceed inherent risk score.
+                                   <div className="absolute top-1/2 -left-1 -translate-y-1/2 w-2 h-2 bg-slate-800 rotate-45"></div>
+                                </div>
+                             </div>
+                          )}
                         </div>
                         <span className={`px-3 py-1 rounded-full text-xs font-bold ${residualLevel.color}`}>{residualLevel.label} ({residualScore})</span>
                      </div>
                      <div className="p-6">
                         <div className="grid grid-cols-2 gap-6">
                            <div>
-                              <label className="block text-xs font-bold text-slate-500 uppercase mb-2 flex items-center">
+                              <label className="block text-xs font-bold text-slate-500 mb-2 flex items-center">
                                  Impact
                                  <GuidanceTooltip title="Impact Scale (Severity)" content={GUIDANCE_IMPACT} placement="right" />
                               </label>
@@ -1192,7 +1441,7 @@ const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave
                               </p>
                            </div>
                            <div>
-                              <label className="block text-xs font-bold text-slate-500 uppercase mb-2 flex items-center">
+                              <label className="block text-xs font-bold text-slate-500 mb-2 flex items-center">
                                  Likelihood
                                  <GuidanceTooltip title="Likelihood Scale (Probability)" content={GUIDANCE_LIKELIHOOD} placement="left" />
                               </label>
@@ -1210,6 +1459,32 @@ const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave
                               </p>
                            </div>
                         </div>
+
+                         {/* HISTORICAL SCORE VISUALIZATION - MOVED TO RESIDUAL */}
+                         {formData.historicalScores && formData.historicalScores.length > 0 && (
+                           <div className="mt-6 pt-4 border-t border-slate-200 dark:border-slate-700">
+                             <h5 className="flex items-center gap-2 text-xs font-bold text-slate-500 mb-3">
+                                <TrendingUp size={14} /> Score History (Last 4 Review Cycles)
+                             </h5>
+                             <div className="flex items-center gap-3 overflow-x-auto pb-2">
+                               {formData.historicalScores.map((snapshot, index) => {
+                                 // Simple logic to color code the historical badges
+                                 // We need real impact to get accurate color, but assuming score > 15 is high is enough for small badge.
+                                 let colorClass = 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300';
+                                 if (snapshot.score >= 15) colorClass = 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300';
+                                 else if (snapshot.score >= 5) colorClass = 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300';
+
+                                 return (
+                                   <div key={index} className={`flex flex-col items-center p-2 rounded-lg border border-slate-200 dark:border-slate-700 min-w-[80px] ${colorClass}`}>
+                                      <span className="text-[10px] font-bold uppercase">{snapshot.quarter}</span>
+                                      <span className="text-lg font-black">{snapshot.score}</span>
+                                      <span className="text-[9px] opacity-75">{snapshot.date}</span>
+                                   </div>
+                                 );
+                               })}
+                             </div>
+                           </div>
+                        )}
                      </div>
                   </div>
                </div>
@@ -1222,7 +1497,7 @@ const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave
                            <Target size={24} />
                         </div>
                         <div>
-                           <h4 className="font-bold text-emerald-900 dark:text-emerald-300 uppercase text-sm">5. Current Status</h4>
+                           <h4 className="font-bold text-emerald-900 dark:text-emerald-300 text-sm">5. Current Status</h4>
                            <p className="text-xs text-emerald-700 dark:text-emerald-400">Final determination of risk state</p>
                         </div>
                      </div>
@@ -1558,7 +1833,7 @@ const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave
                 <div className="absolute bottom-0 left-0 right-0 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 pt-4 pb-2">
                    <div className="bg-slate-50 dark:bg-slate-800/50 rounded-xl p-3 border border-slate-200 dark:border-slate-700 focus-within:ring-2 focus-within:ring-blue-100 dark:focus-within:ring-blue-900 transition-all shadow-sm">
                       <div className="flex justify-between items-center mb-2 px-1">
-                         <span className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wide">New Comment / Feedback</span>
+                         <span className="text-xs font-bold text-slate-400 dark:text-slate-500 tracking-wide">New Comment / Feedback</span>
                          <span className="text-xs text-slate-500 flex items-center gap-1">
                             Posting as: <span className="font-bold text-blue-600 dark:text-blue-400">{currentUser.name}</span>
                             <span className="px-1.5 py-0.5 bg-slate-200 dark:bg-slate-700 rounded text-[10px] font-bold">{currentUser.role}</span>
@@ -1618,7 +1893,7 @@ const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave
 
                 <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm overflow-hidden">
                    <div className="bg-slate-50 dark:bg-slate-800/80 px-6 py-3 border-b border-slate-200 dark:border-slate-700">
-                      <h4 className="font-bold text-slate-700 dark:text-slate-200 text-sm uppercase tracking-wide">Escalation Levels</h4>
+                      <h4 className="font-bold text-slate-700 dark:text-slate-200 text-sm tracking-wide">Escalation Levels</h4>
                    </div>
                    
                    <div className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -1631,9 +1906,9 @@ const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave
                          const defaultUser = getDefaultUserForLevel(level);
 
                          return (
-                            <div key={level} className={`p-4 transition-colors flex items-start md:items-center gap-4 ${isChecked ? 'bg-orange-50/50 dark:bg-orange-900/10' : 'hover:bg-slate-50 dark:hover:bg-slate-800/50'}`}>
+                            <div key={level} className={`p-4 transition-colors flex items-start gap-4 ${isChecked ? 'bg-orange-50/50 dark:bg-orange-900/10' : 'hover:bg-slate-50 dark:hover:bg-slate-800/50'}`}>
                                {/* Checkbox (Always visible, handles toggle) */}
-                               <div className="flex items-center h-full pt-1 md:pt-0">
+                               <div className="pt-1">
                                   <label className="relative inline-flex items-center cursor-pointer">
                                      <input 
                                         type="checkbox" 
@@ -1646,90 +1921,92 @@ const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave
                                   </label>
                                </div>
 
-                               {/* Level Info */}
+                               {/* Level Info & Users */}
                                <div className="flex-1">
-                                  <h5 className={`font-bold text-sm ${isChecked ? 'text-slate-800 dark:text-white' : 'text-slate-500 dark:text-slate-400'}`}>{level}</h5>
-                                  <p className="text-xs text-slate-400">Authority Role: {level.replace('Escalation', '').replace('Profile', '').trim()}</p>
-                               </div>
+                                  <div className="mb-3">
+                                     <h5 className={`font-bold text-sm ${isChecked ? 'text-slate-800 dark:text-white' : 'text-slate-500 dark:text-slate-400'}`}>{level}</h5>
+                                     <p className="text-xs text-slate-400">Authority Role: {level.replace('Escalation', '').replace('Profile', '').trim()}</p>
+                                  </div>
 
-                               {/* User Display Area */}
-                               <div className="flex flex-col gap-2 min-w-[200px] items-end">
-                                  {/* List of Escalated Users */}
-                                  {activeEntries.length > 0 ? (
-                                     activeEntries.map(entry => (
-                                        <div key={entry.userId} className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border ${isChecked ? 'bg-white dark:bg-slate-900 border-orange-200 dark:border-orange-800' : 'bg-slate-100 dark:bg-slate-800 border-transparent opacity-60'}`}>
-                                           <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${isChecked ? 'bg-orange-100 text-orange-600' : 'bg-slate-200 text-slate-500'}`}>
-                                              {entry.userName.charAt(0)}
+                                  {/* Users Area */}
+                                  <div className="flex flex-wrap gap-2 items-center">
+                                     {/* List of Escalated Users */}
+                                     {activeEntries.length > 0 ? (
+                                        activeEntries.map(entry => (
+                                           <div key={entry.userId} className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border ${isChecked ? 'bg-white dark:bg-slate-900 border-orange-200 dark:border-orange-800' : 'bg-slate-100 dark:bg-slate-800 border-transparent opacity-60'}`}>
+                                              <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${isChecked ? 'bg-orange-100 text-orange-600' : 'bg-slate-200 text-slate-500'}`}>
+                                                 {entry.userName.charAt(0)}
+                                              </div>
+                                              <div className="flex flex-col">
+                                                 <span className={`text-sm font-medium leading-none ${isChecked ? 'text-slate-700 dark:text-slate-200' : 'text-slate-500'}`}>{entry.userName}</span>
+                                              </div>
+                                              {isAdmin && canEdit && (
+                                                 <button 
+                                                   onClick={() => handleRemoveEscalationUser(entry.userId, level)}
+                                                   className="ml-1 text-slate-400 hover:text-red-500 p-0.5 rounded"
+                                                   title="Remove User"
+                                                 >
+                                                    <X size={12} />
+                                                 </button>
+                                              )}
                                            </div>
-                                           <div className="flex flex-col">
-                                              <span className={`text-sm font-medium leading-none ${isChecked ? 'text-slate-700 dark:text-slate-200' : 'text-slate-500'}`}>{entry.userName}</span>
-                                           </div>
-                                           {isAdmin && canEdit && (
+                                        ))
+                                     ) : (
+                                        // Show Default Ghost User if unchecked
+                                        defaultUser && (
+                                          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg border bg-slate-50 dark:bg-slate-800 border-dashed border-slate-300 dark:border-slate-700 opacity-60">
+                                             <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold bg-slate-200 text-slate-500">
+                                                {defaultUser.name.charAt(0)}
+                                             </div>
+                                             <div className="flex flex-col">
+                                                <span className="text-sm font-medium leading-none text-slate-500 italic">{defaultUser.name}</span>
+                                             </div>
+                                          </div>
+                                        )
+                                     )}
+
+                                     {/* Admin: Add User Button */}
+                                     {isAdmin && canEdit && isChecked && (
+                                        <div className="relative">
+                                           {activeEscalationLevel === level ? (
+                                              <div className="flex items-center gap-2 animate-fade-in">
+                                                 <div className="relative">
+                                                    <input 
+                                                       autoFocus
+                                                       className="w-48 px-2 py-1.5 text-xs border border-blue-300 rounded shadow-sm outline-none bg-white dark:bg-slate-800 dark:text-white"
+                                                       placeholder="Search user..."
+                                                       value={escalationSearch}
+                                                       onChange={(e) => setEscalationSearch(e.target.value)}
+                                                    />
+                                                    {/* Dropdown Results */}
+                                                    {escalationSearch && (
+                                                       <div className="absolute top-full left-0 mt-1 w-64 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-xl z-50 max-h-48 overflow-y-auto">
+                                                          {users.filter(u => u.name.toLowerCase().includes(escalationSearch.toLowerCase())).map(u => (
+                                                             <button 
+                                                                key={u.id}
+                                                                onClick={() => handleAddEscalationUser(u, level)}
+                                                                className="w-full text-left px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-700 text-xs text-slate-700 dark:text-slate-200 flex items-center justify-between"
+                                                             >
+                                                                <span>{u.name}</span>
+                                                                <span className="text-[10px] text-slate-400 bg-slate-100 dark:bg-slate-900 px-1 rounded">{u.role}</span>
+                                                             </button>
+                                                          ))}
+                                                       </div>
+                                                    )}
+                                                 </div>
+                                                 <button onClick={() => setActiveEscalationLevel(null)} className="text-slate-400 hover:text-slate-600"><X size={14} /></button>
+                                              </div>
+                                           ) : (
                                               <button 
-                                                onClick={() => handleRemoveEscalationUser(entry.userId, level)}
-                                                className="ml-1 text-slate-400 hover:text-red-500 p-0.5 rounded"
-                                                title="Remove User"
+                                                 onClick={() => setActiveEscalationLevel(level)}
+                                                 className="text-xs flex items-center gap-1 text-blue-600 dark:text-blue-400 hover:text-blue-700 font-bold px-2 py-1.5 rounded hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors border border-dashed border-blue-300 dark:border-blue-700"
                                               >
-                                                 <X size={12} />
+                                                 <Plus size={12} /> Add Person
                                               </button>
                                            )}
                                         </div>
-                                     ))
-                                  ) : (
-                                     // Show Default Ghost User if unchecked
-                                     defaultUser && (
-                                       <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg border bg-slate-50 dark:bg-slate-800 border-dashed border-slate-300 dark:border-slate-700 opacity-60">
-                                          <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold bg-slate-200 text-slate-500">
-                                             {defaultUser.name.charAt(0)}
-                                          </div>
-                                          <div className="flex flex-col">
-                                             <span className="text-sm font-medium leading-none text-slate-500 italic">{defaultUser.name}</span>
-                                          </div>
-                                       </div>
-                                     )
-                                  )}
-
-                                  {/* Admin: Add User Button */}
-                                  {isAdmin && canEdit && isChecked && (
-                                     <div className="relative">
-                                        {activeEscalationLevel === level ? (
-                                           <div className="flex items-center gap-2 animate-fade-in">
-                                              <div className="relative">
-                                                 <input 
-                                                    autoFocus
-                                                    className="w-48 px-2 py-1 text-xs border border-blue-300 rounded shadow-sm outline-none"
-                                                    placeholder="Search user..."
-                                                    value={escalationSearch}
-                                                    onChange={(e) => setEscalationSearch(e.target.value)}
-                                                 />
-                                                 {/* Dropdown Results */}
-                                                 {escalationSearch && (
-                                                    <div className="absolute top-full right-0 mt-1 w-64 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-xl z-50 max-h-48 overflow-y-auto">
-                                                       {users.filter(u => u.name.toLowerCase().includes(escalationSearch.toLowerCase())).map(u => (
-                                                          <button 
-                                                             key={u.id}
-                                                             onClick={() => handleAddEscalationUser(u, level)}
-                                                             className="w-full text-left px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-700 text-xs text-slate-700 dark:text-slate-200 flex items-center justify-between"
-                                                          >
-                                                             <span>{u.name}</span>
-                                                             <span className="text-[10px] text-slate-400 bg-slate-100 dark:bg-slate-900 px-1 rounded">{u.role}</span>
-                                                          </button>
-                                                       ))}
-                                                    </div>
-                                                 )}
-                                              </div>
-                                              <button onClick={() => setActiveEscalationLevel(null)} className="text-slate-400 hover:text-slate-600"><X size={14} /></button>
-                                           </div>
-                                        ) : (
-                                           <button 
-                                              onClick={() => setActiveEscalationLevel(level)}
-                                              className="text-xs flex items-center gap-1 text-blue-600 hover:text-blue-700 font-bold px-2 py-1 rounded hover:bg-blue-50 transition-colors"
-                                           >
-                                              <Plus size={12} /> Add Person
-                                           </button>
-                                        )}
-                                     </div>
-                                  )}
+                                     )}
+                                  </div>
                                </div>
                             </div>
                          );
