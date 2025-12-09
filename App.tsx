@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { LayoutDashboard, BarChart3, Settings, Search, Plus, User as UserIcon, LogOut, XCircle, Download, RefreshCw, AlertCircle, AlertTriangle, Moon, Sun, Grid2X2, Columns, CheckSquare, Square, EyeOff, Shield, BookOpen } from 'lucide-react';
+import { LayoutDashboard, BarChart3, Settings, Search, Plus, User as UserIcon, LogOut, XCircle, Download, RefreshCw, AlertCircle, AlertTriangle, Moon, Sun, Grid2x2, Columns, CheckSquare, Square, EyeOff, Shield, BookOpen } from 'lucide-react';
 import RiskDashboard from './components/RiskDashboard';
 import RiskList from './components/RiskList';
 import RiskDetail from './components/RiskDetail';
@@ -642,7 +642,7 @@ const App = () => {
               onClick={() => setCurrentView('dashboard')} 
             />
             <NavItem 
-              icon={<Grid2X2 size={18} />} 
+              icon={<Grid2x2 size={18} />} 
               label="Risk Overview" 
               active={currentView === 'categoryDashboard'} 
               onClick={() => setCurrentView('categoryDashboard')} 

@@ -1,6 +1,5 @@
-import { GoogleGenAI } from "@google/genai";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+import { GoogleGenAI } from "@google/genai";
 
 const SYSTEM_INSTRUCTION = "You are an expert Enterprise Risk Manager (RMIA). Provide concise, professional, and actionable advice following ISO 31000 standards. Return responses in pure JSON format.";
 
@@ -9,8 +8,19 @@ interface AiResponse {
   feedback: string;
 }
 
+// Lazy initialization of the client
+const getAiClient = () => {
+  // Check if API key is present to provide a clearer error if missing
+  const apiKey = process.env.API_KEY;
+  if (!apiKey) {
+    throw new Error("Gemini API Key is missing in environment variables.");
+  }
+  return new GoogleGenAI({ apiKey });
+};
+
 export const generateMitigationAdvice = async (title: string, description: string): Promise<AiResponse | null> => {
   try {
+    const ai = getAiClient();
     const prompt = `
       Risk Context:
       Title: ${title}
@@ -42,13 +52,14 @@ export const generateMitigationAdvice = async (title: string, description: strin
     console.error("AI Service Error:", error);
     return {
       text: "Unable to generate advice at this time.",
-      feedback: "AI service unavailable."
+      feedback: error instanceof Error ? error.message : "AI service unavailable."
     };
   }
 };
 
 export const improveRiskDescription = async (currentDescription: string, title: string): Promise<AiResponse | null> => {
   try {
+    const ai = getAiClient();
     const prompt = `
       Risk Context:
       Title: ${title}
@@ -80,7 +91,7 @@ export const improveRiskDescription = async (currentDescription: string, title: 
     console.error("AI Service Error:", error);
     return {
       text: currentDescription,
-      feedback: "AI service unavailable."
+      feedback: error instanceof Error ? error.message : "AI service unavailable."
     };
   }
 };
