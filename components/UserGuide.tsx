@@ -1,495 +1,396 @@
 
-
-
 import React, { useState } from 'react';
-import { BookOpen, AlertTriangle, Shield, TrendingUp, Target, Activity, CheckSquare, Sparkles, ChevronRight, LayoutDashboard, Grid2X2, Map, Table, AlertCircle, ArrowUp, ArrowDown, Square, Triangle } from 'lucide-react';
+import { Book, LayoutDashboard, FilePlus, ShieldAlert, Users, CheckCircle, Bot, ArrowRight, List, CheckSquare, BookOpen } from 'lucide-react';
 
-const UserGuide: React.FC = () => {
-  const [activeSection, setActiveSection] = useState('getting-started');
+interface GuideSection {
+  id: string;
+  title: string;
+  icon: any;
+  content: React.ReactNode;
+}
 
-  const sections = [
-    { id: 'getting-started', label: 'Getting Started', icon: <BookOpen size={16} /> },
-    { id: 'main-grid', label: '1. Main Grid Reference', icon: <Table size={16} /> },
-    { id: 'risk-identification', label: '2. Identification', icon: <Target size={16} /> },
-    { id: 'risk-scoring', label: '3. Scoring Matrix', icon: <Activity size={16} /> },
-    { id: 'risk-heatmap', label: '4. Risk Heat Map', icon: <Map size={16} /> },
-    { id: 'controls-mitigation', label: '5. Controls & Mitigation', icon: <Shield size={16} /> },
-    { id: 'escalation-protocol', label: '6. Escalation Protocol', icon: <TrendingUp size={16} /> },
-    { id: 'action-plans', label: '7. Action Plans', icon: <CheckSquare size={16} /> },
+export const UserGuide: React.FC = () => {
+  const [activeSection, setActiveSection] = useState('intro');
+
+  const sections: GuideSection[] = [
+    {
+      id: 'intro',
+      title: '1. Introduction & Governance',
+      icon: <Book size={18} />,
+      content: (
+        <div className="space-y-6 animate-fade-in">
+          <div>
+            <h2 className="text-3xl font-bold text-slate-900 dark:text-white mb-2">Welcome to Trident Contract Guard</h2>
+            <p className="text-lg text-slate-600 dark:text-slate-300 leading-relaxed">
+              Trident Contract Guard is the centralized platform for managing high-value and high-risk contracts across our global entities (Brazil, Congo, Equatorial Guinea, and London).
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
+            <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm transition-colors">
+              <h3 className="font-bold text-slate-900 dark:text-white mb-3 text-lg">System Objectives</h3>
+              <ul className="space-y-3 text-slate-600 dark:text-slate-300">
+                <li className="flex items-start gap-2">
+                  <CheckCircle size={18} className="text-green-500 mt-1 shrink-0" />
+                  <span><strong>Compliance:</strong> Ensure all high-value commitments adhere to the Delegation of Authority (DoA).</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <CheckCircle size={18} className="text-green-500 mt-1 shrink-0" />
+                  <span><strong>Visibility:</strong> Provide a single pane of glass for Legal teams to track exposure.</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <CheckCircle size={18} className="text-green-500 mt-1 shrink-0" />
+                  <span><strong>Efficiency:</strong> Reduce approval turnaround time through automated routing and AI assistance.</span>
+                </li>
+              </ul>
+            </div>
+
+            <div className="bg-white dark:bg-slate-800 p-6 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm transition-colors">
+              <h3 className="font-bold text-slate-900 dark:text-white mb-3 text-lg">User Roles</h3>
+              <ul className="space-y-2 text-sm text-slate-600 dark:text-slate-300">
+                <li><strong className="text-blue-600 dark:text-blue-400">SCM / Contract Owner:</strong> Initiates contracts, uploads documents, and answer reviewer queries.</li>
+                <li><strong className="text-purple-600 dark:text-purple-400">Contracts Lead:</strong> Reviews submissions for technical and commercial validity.</li>
+                <li><strong className="text-orange-600 dark:text-orange-400">CEO:</strong> Final approver for contracts flagged as "High Risk".</li>
+                <li><strong className="text-slate-600 dark:text-slate-400">Ad-Hoc Reviewer:</strong> Subject Matter Experts invited to consult on specific contracts.</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      )
+    },
+    {
+      id: 'dashboard',
+      title: '2. Dashboard & Navigation',
+      icon: <LayoutDashboard size={18} />,
+      content: (
+        <div className="space-y-8 animate-fade-in">
+          <div>
+            <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-4">Navigating the Dashboard</h2>
+            <p className="text-slate-600 dark:text-slate-300 mb-6">
+              The dashboard is designed to answer three questions immediately: What is pending? What is high risk? Where is the money going?
+            </p>
+          </div>
+
+          <div className="space-y-6">
+            <div className="border-l-4 border-blue-500 pl-6 py-2 bg-blue-50 dark:bg-blue-900/10 rounded-r-lg">
+              <h3 className="font-bold text-lg text-slate-800 dark:text-white">Global vs. Local View</h3>
+              <p className="text-slate-600 dark:text-slate-400 mt-1">
+                Use the <strong>Flag Icons</strong> at the top right to filter the entire dashboard by Entity. 
+                Selecting "Brazil" will filter KPIs, charts, and the contract register to show only Brazil-related data. 
+                Clicking the active flag again resets the view to "Global".
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="bg-slate-50 dark:bg-slate-800 p-5 rounded-lg border border-slate-200 dark:border-slate-700">
+                <h4 className="font-bold text-slate-800 dark:text-white mb-3 flex items-center gap-2">
+                  <List size={18} /> Contract Register Columns
+                </h4>
+                <ul className="list-disc pl-5 text-sm space-y-2 text-slate-600 dark:text-slate-400">
+                  <li><strong>Status:</strong> The current workflow stage (e.g., "Pending CEO Approval").</li>
+                  <li><strong>Submitter:</strong> The SCM owner responsible for the contract.</li>
+                  <li><strong>Role Column:</strong> Look for the <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-purple-100 text-purple-700 border border-purple-200 dark:bg-purple-900/30 dark:text-purple-300 dark:border-purple-700">Ad-Hoc</span> badge. This indicates you have been manually invited to review this specific contract, even if you are not in the standard approval chain.</li>
+                </ul>
+              </div>
+
+              <div className="bg-slate-50 dark:bg-slate-800 p-5 rounded-lg border border-slate-200 dark:border-slate-700">
+                <h4 className="font-bold text-slate-800 dark:text-white mb-3 flex items-center gap-2">
+                  <CheckSquare size={18} /> Interactive KPIs
+                </h4>
+                <p className="text-sm text-slate-600 dark:text-slate-400 mb-3">
+                  The KPI cards at the top are also filters.
+                </p>
+                <ul className="list-disc pl-5 text-sm space-y-2 text-slate-600 dark:text-slate-400">
+                  <li>Click <strong>Contracts Under Review</strong> to see only Pending/Submitted items.</li>
+                  <li>Click <strong>High Risk Identified</strong> to filter for contracts requiring CEO approval (Orange flag).</li>
+                  <li>Clicking a card again resets the filter.</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+      )
+    },
+    {
+      id: 'submission',
+      title: '3. Creating a Submission',
+      icon: <FilePlus size={18} />,
+      content: (
+        <div className="space-y-8 animate-fade-in">
+          <div>
+            <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-4">Submission Workflow</h2>
+            <p className="text-slate-600 dark:text-slate-300">
+              The "New Submission" wizard guides SCM users through 6 steps to ensure data quality before a contract reaches management.
+            </p>
+          </div>
+
+          <div className="space-y-8">
+            <section>
+              <h3 className="text-xl font-bold text-slate-800 dark:text-white mb-4 pb-2 border-b border-slate-200 dark:border-slate-700">
+                Step-by-Step Guide
+              </h3>
+              
+              <div className="space-y-6">
+                <div className="flex gap-4">
+                  <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 dark:bg-blue-900 dark:text-blue-300 flex items-center justify-center font-bold shrink-0">1</div>
+                  <div>
+                    <h4 className="font-bold text-slate-800 dark:text-white">General Info</h4>
+                    <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
+                      <strong>Critical:</strong> Enter the Vendor Qualification (DDQ) number. Contracts without a valid DDQ cannot be approved.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex gap-4">
+                  <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 dark:bg-blue-900 dark:text-blue-300 flex items-center justify-center font-bold shrink-0">2</div>
+                  <div>
+                    <h4 className="font-bold text-slate-800 dark:text-white">Scope & Value (Smart Drafting)</h4>
+                    <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
+                      Select the <strong>Contract Type</strong> (CAPEX, OPEX, or MIXED). This drives the risk logic.
+                    </p>
+                    <div className="mt-3 bg-purple-50 dark:bg-purple-900/10 border border-purple-200 dark:border-purple-800/50 p-3 rounded-lg">
+                      <p className="text-xs font-bold text-purple-800 dark:text-purple-300 flex items-center gap-1 mb-1">
+                        <Bot size={14} /> AI Smart Drafter
+                      </p>
+                      <p className="text-xs text-slate-600 dark:text-slate-400">
+                        Write rough bullet points in the Scope or Background fields (e.g., "Fixing the pipes on the rig"). 
+                        Click <strong className="text-purple-600 dark:text-purple-400">Refine with AI</strong>. The system will rewrite it into professional legal language. 
+                        You can then <strong>Accept</strong> or <strong>Decline</strong> the suggestion side-by-side.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex gap-4">
+                  <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 dark:bg-blue-900 dark:text-blue-300 flex items-center justify-center font-bold shrink-0">3</div>
+                  <div>
+                    <h4 className="font-bold text-slate-800 dark:text-white">Evaluation</h4>
+                    <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
+                      Summarize the Tender process. If this is a Sole Source contract, you must justify it here.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex gap-4">
+                  <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 dark:bg-blue-900 dark:text-blue-300 flex items-center justify-center font-bold shrink-0">4</div>
+                  <div>
+                    <h4 className="font-bold text-slate-800 dark:text-white">Terms & Risk Checklist</h4>
+                    <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
+                      This is the most critical section.
+                    </p>
+                    <ul className="list-disc pl-5 mt-2 space-y-1 text-sm text-slate-600 dark:text-slate-400">
+                      <li><strong>Liability Cap:</strong> If less than 100%, it triggers a risk flag.</li>
+                      <li><strong>Subcontracting:</strong> If &gt;30%, it triggers a risk flag.</li>
+                      <li><strong>Manual Checklist:</strong> Select applicable risks (e.g., "Work in Conflict Zone").</li>
+                    </ul>
+                  </div>
+                </div>
+
+                <div className="flex gap-4">
+                  <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 dark:bg-blue-900 dark:text-blue-300 flex items-center justify-center font-bold shrink-0">5</div>
+                  <div>
+                    <h4 className="font-bold text-slate-800 dark:text-white">Documents</h4>
+                    <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
+                      Upload the Final Draft Contract (PDF/Word) and the Pricing Schedule. Max size 10MB per file.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex gap-4">
+                  <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 dark:bg-blue-900 dark:text-blue-300 flex items-center justify-center font-bold shrink-0">6</div>
+                  <div>
+                    <h4 className="font-bold text-slate-800 dark:text-white">Pre-Submission Check</h4>
+                    <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
+                      The system runs a final validation. It will tell you if the contract is <strong>Standard</strong> or <strong>High Risk</strong>.
+                      If High Risk, it will explicitly list the reasons (e.g., "CAPEX &gt; USD 5M").
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </section>
+          </div>
+        </div>
+      )
+    },
+    {
+      id: 'risk_logic',
+      title: '4. Risk Logic Matrix',
+      icon: <ShieldAlert size={18} />,
+      content: (
+        <div className="space-y-8 animate-fade-in">
+          <div>
+            <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-4">Risk Evaluation Logic</h2>
+            <p className="text-slate-600 dark:text-slate-300">
+              The system automatically classifies contracts as "High Risk" based on the following triggers. A High Risk classification mandates CEO approval.
+            </p>
+          </div>
+
+          <div className="overflow-hidden border border-slate-200 dark:border-slate-700 rounded-lg">
+            <table className="w-full text-sm text-left">
+              <thead className="bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white font-bold">
+                <tr>
+                  <th className="p-4 border-b dark:border-slate-700">Category</th>
+                  <th className="p-4 border-b dark:border-slate-700">Trigger Condition</th>
+                  <th className="p-4 border-b dark:border-slate-700">Rationale</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-700 bg-white dark:bg-slate-800">
+                <tr>
+                  <td className="p-4 font-medium text-slate-900 dark:text-white">Financial (OPEX)</td>
+                  <td className="p-4 text-orange-600 dark:text-orange-400 font-bold">&gt; $1,000,000 USD</td>
+                  <td className="p-4 text-slate-600 dark:text-slate-400">Material impact on operating budget.</td>
+                </tr>
+                <tr>
+                  <td className="p-4 font-medium text-slate-900 dark:text-white">Financial (CAPEX)</td>
+                  <td className="p-4 text-orange-600 dark:text-orange-400 font-bold">&gt; $5,000,000 USD</td>
+                  <td className="p-4 text-slate-600 dark:text-slate-400">Major capital investment requiring board visibility.</td>
+                </tr>
+                <tr>
+                  <td className="p-4 font-medium text-slate-900 dark:text-white">Duration</td>
+                  <td className="p-4 text-slate-700 dark:text-slate-300">&gt; 3 Years</td>
+                  <td className="p-4 text-slate-600 dark:text-slate-400">Long-term lock-in limits strategic flexibility.</td>
+                </tr>
+                <tr>
+                  <td className="p-4 font-medium text-slate-900 dark:text-white">Liability</td>
+                  <td className="p-4 text-slate-700 dark:text-slate-300">&lt; 100% of Contract Value</td>
+                  <td className="p-4 text-slate-600 dark:text-slate-400">Exposure exceeds recoverability in case of failure.</td>
+                </tr>
+                <tr>
+                  <td className="p-4 font-medium text-slate-900 dark:text-white">Third Party</td>
+                  <td className="p-4 text-slate-700 dark:text-slate-300">Subcontracting &gt; 30%</td>
+                  <td className="p-4 text-slate-600 dark:text-slate-400">Loss of control over quality and HSE standards.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg border border-blue-200 dark:border-blue-800 flex items-start gap-3">
+             <Bot className="text-blue-600 dark:text-blue-400 shrink-0 mt-1" />
+             <div>
+               <h4 className="font-bold text-blue-900 dark:text-blue-300">AI Risk Assistant</h4>
+               <p className="text-sm text-slate-700 dark:text-slate-300 mt-1">
+                 Beyond the hard rules above, the <strong>Legal & Risk</strong> tab features an AI Assistant. 
+                 Clicking "Refresh" sends the contract summary to the Gemini model, which provides a qualitative analysis 
+                 of "soft risks" (e.g., ambiguity in scope, conflict of interest potential) that rule-based logic might miss.
+               </p>
+             </div>
+          </div>
+        </div>
+      )
+    },
+    {
+      id: 'reviews',
+      title: '5. Approvals & Workflows',
+      icon: <CheckCircle size={18} />,
+      content: (
+        <div className="space-y-8 animate-fade-in">
+          <div>
+            <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-4">Approval Process</h2>
+            <p className="text-slate-600 dark:text-slate-300">
+              The workflow adapts automatically based on the risk profile of the contract.
+            </p>
+          </div>
+
+          <div className="space-y-6">
+            <div className="relative border-l-2 border-slate-200 dark:border-slate-700 ml-3 space-y-10">
+              <div className="relative pl-8">
+                <span className="absolute -left-[9px] top-1 w-4 h-4 bg-blue-500 rounded-full border-4 border-white dark:border-slate-800 shadow-sm"></span>
+                <h3 className="font-bold text-slate-900 dark:text-white text-lg">Stage 1: Corporate Review</h3>
+                <p className="text-sm text-slate-600 dark:text-slate-400 mt-2 leading-relaxed">
+                  Upon submission, the contract is locked. Notifications are sent to the Contracts Lead.
+                  They can <strong>Request Changes</strong> (sends back to SCM) or <strong>Approve</strong>.
+                </p>
+              </div>
+
+              <div className="relative pl-8">
+                <span className="absolute -left-[9px] top-1 w-4 h-4 bg-orange-500 rounded-full border-4 border-white dark:border-slate-800 shadow-sm"></span>
+                <h3 className="font-bold text-slate-900 dark:text-white text-lg">Stage 2: CEO Approval (High Risk Only)</h3>
+                <p className="text-sm text-slate-600 dark:text-slate-400 mt-2 leading-relaxed">
+                  If the contract has any High Risk triggers (e.g., CAPEX &gt; $5M), it moves to the "Pending CEO" state after Corporate Review. 
+                  The CEO is the final gatekeeper.
+                </p>
+              </div>
+               
+              <div className="relative pl-8">
+                <span className="absolute -left-[9px] top-1 w-4 h-4 bg-green-500 rounded-full border-4 border-white dark:border-slate-800 shadow-sm"></span>
+                <h3 className="font-bold text-slate-900 dark:text-white text-lg">Stage 3: Approved</h3>
+                <p className="text-sm text-slate-600 dark:text-slate-400 mt-2 leading-relaxed">
+                  Once approved, the system logs the final state in the Audit Trail. No further edits are possible.
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-purple-50 dark:bg-purple-900/10 p-5 rounded-lg border border-purple-200 dark:border-purple-800 mt-6">
+              <h3 className="font-bold text-purple-900 dark:text-purple-300 mb-2 flex items-center gap-2">
+                <Users size={18} /> Ad-Hoc Reviewers (Consultation)
+              </h3>
+              <p className="text-sm text-slate-700 dark:text-slate-300 mb-3">
+                Sometimes you need an expert opinion (e.g., Engineering for technical specs) who is not in the automatic approval chain.
+              </p>
+              <div className="bg-white dark:bg-slate-800 p-3 rounded border border-purple-100 dark:border-purple-800/50">
+                <p className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">How to Add:</p>
+                <ol className="list-decimal pl-5 text-sm text-slate-600 dark:text-slate-400 space-y-1">
+                  <li>Open the Contract.</li>
+                  <li>Go to the <strong>Approvals</strong> tab.</li>
+                  <li>Select a user from the dropdown and click <strong>Add</strong>.</li>
+                </ol>
+              </div>
+              <p className="text-xs text-purple-800 dark:text-purple-400 mt-2 italic">
+                Note: Ad-Hoc reviewers provide comments and a decision (Approve/Reject), but their approval is consultative. 
+                It does not mechanically advance the contract status like the CEO's approval does.
+              </p>
+            </div>
+          </div>
+        </div>
+      )
+    }
   ];
 
+  const activeContent = sections.find(s => s.id === activeSection);
+
   return (
-    <div className="flex h-full gap-6 animate-fade-in pb-12 items-start">
-      {/* Sidebar Navigation - Sticky and Fixed Height */}
-      <div className="w-64 flex-shrink-0 hidden md:block sticky top-0">
-        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-sm p-4">
-          <h3 className="font-bold text-slate-800 dark:text-white mb-4 px-2">Table of Contents</h3>
-          <nav className="space-y-1 mb-6">
-            {sections.map((section) => (
-              <button
-                key={section.id}
-                onClick={() => setActiveSection(section.id)}
-                className={`w-full flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-lg transition-colors text-left ${
-                  activeSection === section.id
-                    ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
-                    : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'
-                }`}
-              >
+    <div className="flex flex-col lg:flex-row h-[calc(100vh-140px)] bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden">
+      
+      {/* Sidebar */}
+      <div className="w-full lg:w-72 bg-slate-50 dark:bg-slate-900/50 border-r border-slate-200 dark:border-slate-700 flex flex-col shrink-0">
+        <div className="p-6 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 transition-colors">
+          <h2 className="font-bold text-slate-800 dark:text-white flex items-center gap-2">
+             <BookOpen size={20} className="text-blue-600 dark:text-blue-400"/> User Guide
+          </h2>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Deployment Training v1.0</p>
+        </div>
+        <div className="flex-1 overflow-y-auto p-4 space-y-1">
+          {sections.map(section => (
+            <button
+              key={section.id}
+              onClick={() => setActiveSection(section.id)}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all ${
+                activeSection === section.id 
+                  ? 'bg-blue-600 text-white shadow-md' 
+                  : 'text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800'
+              }`}
+            >
+              <div className={`${activeSection === section.id ? 'text-white' : 'text-slate-400 dark:text-slate-500'}`}>
                 {section.icon}
-                <span className="truncate">{section.label}</span>
-                {activeSection === section.id && <ChevronRight size={14} className="ml-auto" />}
-              </button>
-            ))}
-          </nav>
+              </div>
+              <span className="flex-1 text-left">{section.title}</span>
+              {activeSection === section.id && <ArrowRight size={14} className="opacity-80" />}
+            </button>
+          ))}
+        </div>
+        <div className="p-4 border-t border-slate-200 dark:border-slate-700 text-center">
+          <p className="text-[10px] text-slate-400">
+            Need help? Contact <a href="#" className="text-blue-500 hover:underline">IT Support</a>
+          </p>
         </div>
       </div>
 
-      {/* Main Content Area - Displays only the active section */}
-      <div className="flex-1 max-w-4xl min-h-[500px]">
-        
-        {/* Intro Section */}
-        {activeSection === 'getting-started' && (
-          <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-8 shadow-sm animate-fade-in">
-             <div className="flex items-center justify-between mb-4">
-               <div className="flex items-center gap-3">
-                  <div className="p-2 bg-blue-100 dark:bg-blue-900/50 rounded-lg text-blue-600 dark:text-blue-400">
-                     <BookOpen size={24} />
-                  </div>
-                  <h2 className="text-2xl font-bold text-slate-800 dark:text-white">Getting Started</h2>
-               </div>
-             </div>
-             <p className="text-slate-600 dark:text-slate-300 leading-relaxed mb-4">
-                Welcome to the Global Risk Manager tool. This platform is designed to help our organization identify, assess, and mitigate risks across all global operations (UK, Brazil, Equatorial Guinea, Congo).
-             </p>
-             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
-                <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-100 dark:border-slate-700">
-                   <h4 className="font-bold flex items-center gap-2 text-slate-700 dark:text-slate-200 mb-2">
-                      <LayoutDashboard size={16} /> Dashboard
-                   </h4>
-                   <p className="text-sm text-slate-500 dark:text-slate-400">Your command center. View Key Performance Indicators (KPIs), filter risks by category, and access your "My Ownership" quick list.</p>
-                </div>
-                <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-100 dark:border-slate-700">
-                   <h4 className="font-bold flex items-center gap-2 text-slate-700 dark:text-slate-200 mb-2">
-                      <Grid2X2 size={16} /> Risk Heatmap
-                   </h4>
-                   <p className="text-sm text-slate-500 dark:text-slate-400">A visual matrix (5x5) displaying risks based on Impact vs. Likelihood. Click any cell to filter the list below.</p>
-                </div>
-             </div>
-
-             <div className="mt-8">
-               <h3 className="text-lg font-bold text-slate-800 dark:text-white mb-3">User Roles & Access Permissions</h3>
-               <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-700">
-                 <table className="w-full text-sm text-left">
-                   <thead className="bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 uppercase font-bold text-xs">
-                     <tr>
-                       <th className="px-4 py-3">User Role</th>
-                       <th className="px-4 py-3">View Scope</th>
-                       <th className="px-4 py-3">Edit Permissions</th>
-                       <th className="px-4 py-3">Delete</th>
-                       <th className="px-4 py-3">Admin</th>
-                     </tr>
-                   </thead>
-                   <tbody className="divide-y divide-slate-100 dark:divide-slate-700 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300">
-                     <tr>
-                       <td className="px-4 py-3 font-bold text-purple-600 dark:text-purple-400">RMIA</td>
-                       <td className="px-4 py-3"><strong>Global Access.</strong> Can view all risks, comments, and actions across all countries.</td>
-                       <td className="px-4 py-3">Can edit any risk.</td>
-                       <td className="px-4 py-3"><strong>Yes.</strong> Exclusive right to delete risks.</td>
-                       <td className="px-4 py-3">User Management, Global Reset Cycles.</td>
-                     </tr>
-                     <tr>
-                       <td className="px-4 py-3 font-bold text-orange-600 dark:text-orange-400">Country Manager</td>
-                       <td className="px-4 py-3"><strong>Restricted.</strong> Views risks escalated to them, plus risks they own or collaborate on.</td>
-                       <td className="px-4 py-3">Can edit owned/assigned risks.</td>
-                       <td className="px-4 py-3">No.</td>
-                       <td className="px-4 py-3">None.</td>
-                     </tr>
-                     <tr>
-                       <td className="px-4 py-3 font-bold text-cyan-600 dark:text-cyan-400">Functional Manager</td>
-                       <td className="px-4 py-3"><strong>Restricted.</strong> Views risks escalated to them, plus risks they own or collaborate on.</td>
-                       <td className="px-4 py-3">Can edit owned/assigned risks.</td>
-                       <td className="px-4 py-3">No.</td>
-                       <td className="px-4 py-3">None.</td>
-                     </tr>
-                     <tr>
-                       <td className="px-4 py-3 font-bold text-slate-700 dark:text-slate-200">Manager</td>
-                       <td className="px-4 py-3"><strong>Personal.</strong> Views only risks they Own or are listed as a Collaborator.</td>
-                       <td className="px-4 py-3">Can edit owned risks.</td>
-                       <td className="px-4 py-3">No.</td>
-                       <td className="px-4 py-3">None.</td>
-                     </tr>
-                     <tr>
-                       <td className="px-4 py-3 font-bold text-rose-600 dark:text-rose-400">CEO / TEML Leadership</td>
-                       <td className="px-4 py-3"><strong>Oversight.</strong> Views risks escalated to the corporate level.</td>
-                       <td className="px-4 py-3">Can edit owned risks.</td>
-                       <td className="px-4 py-3">No.</td>
-                       <td className="px-4 py-3">None.</td>
-                     </tr>
-                   </tbody>
-                 </table>
-               </div>
-             </div>
-          </section>
-        )}
-
-        {/* 1. Main Grid Reference */}
-        {activeSection === 'main-grid' && (
-          <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-8 shadow-sm animate-fade-in">
-             <div className="flex items-center gap-3 mb-6">
-                <div className="p-2 bg-blue-100 dark:bg-blue-900/50 rounded-lg text-blue-600 dark:text-blue-400">
-                   <Table size={24} />
-                </div>
-                <h2 className="text-2xl font-bold text-slate-800 dark:text-white">1. Main Grid Reference</h2>
-             </div>
-
-             <p className="text-slate-600 dark:text-slate-300 mb-6">
-                The main risk table provides a comprehensive view of all risks. Below is a guide to the columns and visual indicators used.
-             </p>
-
-             <div className="space-y-8">
-                {/* Visual Indicators Table */}
-                <div>
-                  <h3 className="font-bold text-slate-800 dark:text-white mb-3 flex items-center gap-2">
-                    <AlertCircle size={18} className="text-slate-500" /> Visual Icons & Warnings
-                  </h3>
-                  <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden">
-                    <table className="w-full text-sm text-left">
-                      <thead className="bg-slate-50 dark:bg-slate-800 text-slate-500 font-bold">
-                        <tr>
-                          <th className="px-4 py-2 w-16 text-center">Icon</th>
-                          <th className="px-4 py-2">Meaning</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                        <tr>
-                          <td className="px-4 py-2 text-center"><AlertTriangle size={18} className="text-red-500 inline" /></td>
-                          <td className="px-4 py-2 text-slate-600 dark:text-slate-300">
-                             <strong>Missing Action Plan:</strong> The risk is rated Moderate or Significant but has no open action plan assigned.
-                          </td>
-                        </tr>
-                        <tr>
-                          <td className="px-4 py-2 text-center"><AlertCircle size={18} className="text-red-600 inline" /></td>
-                          <td className="px-4 py-2 text-slate-600 dark:text-slate-300">
-                             <strong>Scoring Error:</strong> The Residual Risk score is higher than the Inherent Risk score (which is logically impossible).
-                          </td>
-                        </tr>
-                        <tr>
-                          <td className="px-4 py-2 text-center"><Triangle size={16} className="text-purple-600 fill-purple-600 inline" /></td>
-                          <td className="px-4 py-2 text-slate-600 dark:text-slate-300">
-                             <strong>New Risk:</strong> This item is newly created and has no baseline from the previous Review Cycle.
-                          </td>
-                        </tr>
-                        <tr>
-                           <td className="px-4 py-2 text-center"><ArrowUp size={18} className="text-red-600 inline" /></td>
-                           <td className="px-4 py-2 text-slate-600 dark:text-slate-300">
-                              <strong>Risk Increased:</strong> The risk score has gone up compared to the previous Review Cycle snapshot.
-                           </td>
-                        </tr>
-                        <tr>
-                           <td className="px-4 py-2 text-center"><ArrowDown size={18} className="text-green-600 inline" /></td>
-                           <td className="px-4 py-2 text-slate-600 dark:text-slate-300">
-                              <strong>Risk Decreased:</strong> The risk score has gone down compared to the previous Review Cycle snapshot.
-                           </td>
-                        </tr>
-                        <tr>
-                           <td className="px-4 py-2 text-center"><Square size={14} className="text-amber-400 fill-amber-400 inline" /></td>
-                           <td className="px-4 py-2 text-slate-600 dark:text-slate-300">
-                              <strong>Stable:</strong> No change in score since the last Review Cycle.
-                           </td>
-                        </tr>
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-
-                {/* Key Columns Table */}
-                <div>
-                  <h3 className="font-bold text-slate-800 dark:text-white mb-3 flex items-center gap-2">
-                    <LayoutDashboard size={18} className="text-slate-500" /> Key Column Definitions
-                  </h3>
-                  <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden">
-                     <table className="w-full text-sm text-left">
-                       <thead className="bg-slate-50 dark:bg-slate-800 text-slate-500 font-bold">
-                         <tr>
-                           <th className="px-4 py-2 w-40">Column</th>
-                           <th className="px-4 py-2">Description</th>
-                         </tr>
-                       </thead>
-                       <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-slate-600 dark:text-slate-300">
-                          <tr>
-                             <td className="px-4 py-2 font-bold">My Role</td>
-                             <td className="px-4 py-2">
-                                Shows if you are the <span className="text-blue-600 font-bold">Owner</span>, a <span className="text-purple-600 font-bold">Collaborator</span>, or a <span className="text-orange-600 font-bold">Reviewer</span> (risk escalated to you).
-                             </td>
-                          </tr>
-                          <tr>
-                             <td className="px-4 py-2 font-bold">Risk Register</td>
-                             <td className="px-4 py-2">The specific departmental or asset register the risk belongs to (e.g., "BR Asset", "Supply Chain").</td>
-                          </tr>
-                          <tr>
-                             <td className="px-4 py-2 font-bold">Residual Score</td>
-                             <td className="px-4 py-2">The current risk rating (1-25) colored by severity (Green/Yellow/Red).</td>
-                          </tr>
-                          <tr>
-                             <td className="px-4 py-2 font-bold">Status</td>
-                             <td className="px-4 py-2">
-                                <span className="text-blue-600 font-bold">Open</span>: Active, needs review.<br/>
-                                <span className="text-amber-600 font-bold">Updated</span>: Recently modified.<br/>
-                                <span className="text-emerald-600 font-bold">Reviewed</span>: Confirmed as current.<br/>
-                                <span className="text-slate-400 font-bold">Closed</span>: Archived/No longer a risk.
-                             </td>
-                          </tr>
-                          <tr>
-                             <td className="px-4 py-2 font-bold">Escalation</td>
-                             <td className="px-4 py-2">Lists the highest management level currently notified about this risk.</td>
-                          </tr>
-                       </tbody>
-                     </table>
-                  </div>
-                </div>
-             </div>
-          </section>
-        )}
-
-        {/* 2. Identification */}
-        {activeSection === 'risk-identification' && (
-          <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-8 shadow-sm animate-fade-in">
-             <div className="flex items-center gap-3 mb-6">
-                <div className="p-2 bg-purple-100 dark:bg-purple-900/50 rounded-lg text-purple-600 dark:text-purple-400">
-                   <Target size={24} />
-                </div>
-                <h2 className="text-2xl font-bold text-slate-800 dark:text-white">2. Risk Identification</h2>
-             </div>
-             
-             <div className="space-y-4">
-                <h3 className="text-lg font-bold text-slate-700 dark:text-slate-200">The Description Formula</h3>
-                <p className="text-slate-600 dark:text-slate-300">
-                   To ensure clarity and consistency, all risk descriptions must follow this standard structure:
-                </p>
-                
-                <div className="bg-purple-50 dark:bg-purple-900/20 border-l-4 border-purple-500 p-4 rounded-r-lg my-4">
-                   <p className="font-mono text-sm md:text-base text-purple-900 dark:text-purple-100 font-semibold">
-                      "There is a risk that <span className="underline decoration-wavy">[EVENT]</span>, caused by <span className="underline decoration-wavy">[CAUSE]</span>, which may result in <span className="underline decoration-wavy">[IMPACT]</span>."
-                   </p>
-                </div>
-
-                <ul className="list-disc list-inside text-sm text-slate-600 dark:text-slate-400 space-y-2 ml-2">
-                   <li><strong>Event:</strong> What might happen? (The uncertainty)</li>
-                   <li><strong>Cause:</strong> What triggers this event? (Root cause)</li>
-                   <li><strong>Impact:</strong> What is the consequence? (Financial, Reputational, Safety)</li>
-                </ul>
-
-                <div className="flex items-center gap-2 mt-4 text-sm text-slate-500 bg-slate-50 dark:bg-slate-800 p-3 rounded-lg">
-                   <Sparkles size={16} className="text-purple-500" />
-                   <span><strong>Pro Tip:</strong> Use the "Improve with AI" button in the risk form to automatically rewrite your draft into this format.</span>
-                </div>
-
-                <div className="mt-6 p-4 bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700">
-                   <h4 className="font-bold text-slate-700 dark:text-slate-200 mb-2">Principal Risks</h4>
-                   <p className="text-sm text-slate-600 dark:text-slate-400">
-                      When selecting a <strong>Risk Category</strong> (e.g., Operational, Financial), the system will filter and display the relevant <strong>Principal Risks</strong>. Select the one that best aligns with your identified risk to ensure accurate corporate reporting.
-                   </p>
-                </div>
-             </div>
-          </section>
-        )}
-
-        {/* 3. Scoring */}
-        {activeSection === 'risk-scoring' && (
-          <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-8 shadow-sm animate-fade-in">
-             <div className="flex items-center gap-3 mb-6">
-                <div className="p-2 bg-emerald-100 dark:bg-emerald-900/50 rounded-lg text-emerald-600 dark:text-emerald-400">
-                   <Activity size={24} />
-                </div>
-                <h2 className="text-2xl font-bold text-slate-800 dark:text-white">3. Scoring Matrix</h2>
-             </div>
-
-             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                <div>
-                   <h3 className="font-bold text-slate-700 dark:text-slate-200 mb-2">Inherent Risk</h3>
-                   <p className="text-sm text-slate-600 dark:text-slate-400 mb-4">
-                      The risk level in its raw state, <strong>before</strong> considering any controls. This represents the "Worst Case Scenario".
-                   </p>
-                   <div className="bg-slate-100 dark:bg-slate-800 p-4 rounded-lg text-center">
-                      <span className="text-xs font-bold uppercase text-slate-500">Formula</span>
-                      <div className="text-lg font-mono font-bold text-slate-800 dark:text-white mt-1">Impact × Likelihood = Risk Score</div>
-                   </div>
-                </div>
-
-                <div>
-                   <h3 className="font-bold text-slate-700 dark:text-slate-200 mb-2">Residual Risk</h3>
-                   <p className="text-sm text-slate-600 dark:text-slate-400 mb-4">
-                      The remaining risk level <strong>after</strong> applying controls. This is your actual current exposure.
-                   </p>
-                </div>
-             </div>
-
-             <div className="bg-amber-50 dark:bg-amber-900/20 p-4 rounded-lg border-l-4 border-amber-500 mt-8">
-                <h4 className="font-bold text-amber-800 dark:text-amber-200 flex items-center gap-2 mb-1">
-                    <Sparkles size={16} /> The Golden Rule
-                </h4>
-                <p className="text-sm text-amber-800 dark:text-amber-300 italic mb-2">
-                    "The Residual Risk Score (Net Risk) <strong>cannot be higher</strong> than the Inherent Risk Score (Gross Risk)."
-                </p>
-                <p className="text-xs text-amber-700 dark:text-amber-400">
-                    Controls are designed to reduce risk. If the system detects a Residual Score higher than the Inherent Score, it will flag an error and prevent you from saving the record.
-                </p>
-            </div>
-          </section>
-        )}
-
-        {/* 4. Heat Map */}
-        {activeSection === 'risk-heatmap' && (
-          <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-8 shadow-sm animate-fade-in">
-             <div className="flex items-center gap-3 mb-6">
-                <div className="p-2 bg-indigo-100 dark:bg-indigo-900/50 rounded-lg text-indigo-600 dark:text-indigo-400">
-                   <Map size={24} />
-                </div>
-                <h2 className="text-2xl font-bold text-slate-800 dark:text-white">4. Risk Heat Map</h2>
-             </div>
-
-             <div className="space-y-6">
-                <p className="text-slate-600 dark:text-slate-300">
-                   Risks are visualized on a 5x5 matrix. The score determines the color urgency.
-                </p>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                   <div className="bg-emerald-50 dark:bg-emerald-900/20 p-4 rounded-lg border border-emerald-100 dark:border-emerald-800">
-                      <div className="text-emerald-600 dark:text-emerald-400 font-bold mb-1">Low (1-4)</div>
-                      <p className="text-xs text-emerald-800 dark:text-emerald-300">Acceptable risk. Monitor periodically.</p>
-                   </div>
-                   <div className="bg-yellow-50 dark:bg-yellow-900/20 p-4 rounded-lg border border-yellow-100 dark:border-yellow-800">
-                      <div className="text-yellow-600 dark:text-yellow-400 font-bold mb-1">Moderate (5-12)</div>
-                      <p className="text-xs text-yellow-800 dark:text-yellow-300">ALARP (As Low As Reasonably Practicable). Action plan required.</p>
-                   </div>
-                   <div className="bg-red-50 dark:bg-red-900/20 p-4 rounded-lg border border-red-100 dark:border-red-800">
-                      <div className="text-red-600 dark:text-red-400 font-bold mb-1">Significant (15-25)</div>
-                      <p className="text-xs text-red-800 dark:text-red-300">Unacceptable. Immediate mitigation and escalation mandatory.</p>
-                   </div>
-                </div>
-             </div>
-          </section>
-        )}
-
-        {/* 5. Controls */}
-        {activeSection === 'controls-mitigation' && (
-          <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-8 shadow-sm animate-fade-in">
-             <div className="flex items-center gap-3 mb-6">
-                <div className="p-2 bg-blue-100 dark:bg-blue-900/50 rounded-lg text-blue-600 dark:text-blue-400">
-                   <Shield size={24} />
-                </div>
-                <h2 className="text-2xl font-bold text-slate-800 dark:text-white">5. Controls & Mitigation</h2>
-             </div>
-             
-             <p className="text-slate-600 dark:text-slate-300 mb-4">
-                Controls are the barriers you put in place to lower the likelihood or impact of a risk.
-             </p>
-
-             <ul className="space-y-3 mb-6">
-               <li className="flex items-start gap-2">
-                 <CheckSquare size={16} className="text-green-500 mt-1" />
-                 <span className="text-sm text-slate-600 dark:text-slate-300"><strong>Excellent (5):</strong> Robust, documented, automated, and tested regularly.</span>
-               </li>
-               <li className="flex items-start gap-2">
-                 <CheckSquare size={16} className="text-green-500 mt-1" />
-                 <span className="text-sm text-slate-600 dark:text-slate-300"><strong>Good (4):</strong> Effective but may have minor documentation gaps.</span>
-               </li>
-               <li className="flex items-start gap-2">
-                 <CheckSquare size={16} className="text-yellow-500 mt-1" />
-                 <span className="text-sm text-slate-600 dark:text-slate-300"><strong>Fair (3):</strong> Controls exist but effectiveness is inconsistent.</span>
-               </li>
-               <li className="flex items-start gap-2">
-                 <CheckSquare size={16} className="text-red-500 mt-1" />
-                 <span className="text-sm text-slate-600 dark:text-slate-300"><strong>Poor/Unsatisfactory (1-2):</strong> Weak, manual, or non-existent controls.</span>
-               </li>
-             </ul>
-
-             <div className="space-y-4 border-t border-slate-100 dark:border-slate-800 pt-6">
-                <h4 className="font-bold text-slate-800 dark:text-white">New: Granular Controls & Star Ratings</h4>
-                <p className="text-slate-600 dark:text-slate-300 text-sm">
-                    We have moved away from free-text blocks. You can now:
-                </p>
-                <ul className="list-disc list-inside text-sm text-slate-600 dark:text-slate-400 space-y-2 ml-2">
-                    <li><strong>Add Individual Controls:</strong> List specific barriers (e.g., "Firewall", "Insurance", "Training").</li>
-                    <li><strong>Star Rating (1-5):</strong> Rate the effectiveness of <em>each</em> control individually using the star system.</li>
-                    <li><strong>Auto-Averaging:</strong> The system automatically calculates the <strong>Overall Controls Rating</strong> based on the average of your individual items.</li>
-                </ul>
-                
-                <div className="flex items-center gap-2 mt-4 text-xs text-slate-500 bg-slate-50 dark:bg-slate-800 p-3 rounded-lg">
-                     <Activity size={16} className="text-blue-500" />
-                     <span><strong>Tip:</strong> You can manually override the calculated average if the mathematical average doesn't reflect the true mitigation strength (e.g., one "Excellent" control outweighs three "Poor" ones).</span>
-                </div>
-            </div>
-          </section>
-        )}
-
-        {/* 6. Escalation */}
-        {activeSection === 'escalation-protocol' && (
-          <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-8 shadow-sm animate-fade-in">
-             <div className="flex items-center gap-3 mb-6">
-                <div className="p-2 bg-orange-100 dark:bg-orange-900/50 rounded-lg text-orange-600 dark:text-orange-400">
-                   <TrendingUp size={24} />
-                </div>
-                <h2 className="text-2xl font-bold text-slate-800 dark:text-white">6. Escalation Protocol</h2>
-             </div>
-
-             <p className="text-slate-600 dark:text-slate-300 mb-6">
-                Escalation is required when a risk exceeds the risk appetite of the current management level or requires resources outside the current budget to mitigate.
-             </p>
-
-             <div className="bg-slate-50 dark:bg-slate-800 p-4 rounded-lg">
-                <h4 className="font-bold text-slate-700 dark:text-slate-200 mb-3">Levels of Authority</h4>
-                <div className="space-y-4">
-                   <div className="flex items-center gap-4">
-                      <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-xs">1</div>
-                      <span className="text-sm text-slate-600 dark:text-slate-300">Functional Manager Escalation</span>
-                   </div>
-                   <div className="w-0.5 h-4 bg-slate-300 ml-4"></div>
-                   <div className="flex items-center gap-4">
-                      <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-xs">2</div>
-                      <span className="text-sm text-slate-600 dark:text-slate-300">TEML Functional Review</span>
-                   </div>
-                   <div className="w-0.5 h-4 bg-slate-300 ml-4"></div>
-                   <div className="flex items-center gap-4">
-                      <div className="w-8 h-8 rounded-full bg-orange-100 text-orange-600 flex items-center justify-center font-bold text-xs">3</div>
-                      <span className="text-sm text-slate-600 dark:text-slate-300">Country Manager Escalation</span>
-                   </div>
-                   <div className="w-0.5 h-4 bg-slate-300 ml-4"></div>
-                   <div className="flex items-center gap-4">
-                      <div className="w-8 h-8 rounded-full bg-red-100 text-red-600 flex items-center justify-center font-bold text-xs">4</div>
-                      <span className="text-sm text-slate-600 dark:text-slate-300 font-bold">TEML Leadership / Corporate Risk Profile</span>
-                   </div>
-                </div>
-             </div>
-          </section>
-        )}
-
-        {/* 7. Action Plans */}
-        {activeSection === 'action-plans' && (
-          <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-8 shadow-sm animate-fade-in">
-             <div className="flex items-center gap-3 mb-6">
-                <div className="p-2 bg-slate-100 dark:bg-slate-800 rounded-lg text-slate-600 dark:text-slate-400">
-                   <CheckSquare size={24} />
-                </div>
-                <h2 className="text-2xl font-bold text-slate-800 dark:text-white">7. Action Plans</h2>
-             </div>
-             
-             <p className="text-slate-600 dark:text-slate-300 mb-4">
-                Action Plans are tasks designed to treat a risk (reduce likelihood or impact).
-             </p>
-
-             <div className="bg-amber-50 dark:bg-amber-900/20 border-l-4 border-amber-500 p-4 rounded-r-lg">
-                <h4 className="font-bold text-amber-800 dark:text-amber-200 text-sm mb-1">Requirement Rule</h4>
-                <p className="text-sm text-amber-700 dark:text-amber-300">
-                   Any risk rated as <strong>Moderate</strong> or <strong>Significant</strong> MUST have at least one active Action Plan.
-                </p>
-             </div>
-          </section>
-        )}
-
+      {/* Content Area */}
+      <div className="flex-1 overflow-y-auto bg-white dark:bg-slate-800 transition-colors">
+        <div className="max-w-4xl mx-auto p-8 lg:p-12">
+          {activeContent?.content}
+        </div>
       </div>
     </div>
   );
 };
-
-export default UserGuide;

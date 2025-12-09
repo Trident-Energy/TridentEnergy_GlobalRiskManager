@@ -1,142 +1,217 @@
-import { GoogleGenAI, Type } from "@google/genai";
 
-let ai: GoogleGenAI | null = null;
+import { GoogleGenAI, Content, Part } from "@google/genai";
+import { ContractData } from "../types";
 
-try {
-  const apiKey = process.env.API_KEY;
-  if (apiKey) {
-    ai = new GoogleGenAI({ apiKey });
-  } else {
-    console.warn("Google GenAI API Key is missing. AI features will be disabled.");
-  }
-} catch (error) {
-  console.error("Failed to initialize Google GenAI client:", error);
-}
-
-export interface AiSuggestion {
-  text: string;
-  feedback: string;
-}
-
-export const generateMitigationAdvice = async (riskTitle: string, riskDescription: string): Promise<AiSuggestion> => {
-  if (!ai) {
-    return {
-      text: "AI service unavailable.",
-      feedback: "API Key is missing or invalid. Please check your configuration."
-    };
-  }
-
-  try {
-    const model = 'gemini-2.5-flash';
-    const prompt = `
-      Act as a Senior Risk Manager.
-      Risk Title: "${riskTitle}"
-      Risk Description: "${riskDescription}"
-      
-      Task:
-      1. Provide 3 concise, bullet-pointed mitigation actions suitable for an enterprise risk register action plan.
-      2. Provide a brief rationale explaining why these specific actions are appropriate for this risk.
-    `;
-
-    const response = await ai.models.generateContent({
-      model,
-      contents: prompt,
-      config: {
-        responseMimeType: 'application/json',
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            mitigation_actions: { 
-              type: Type.STRING, 
-              description: "The 3 bullet points of mitigation advice." 
-            },
-            rationale: { 
-              type: Type.STRING, 
-              description: "A brief explanation of why these controls were selected and how they address the root cause." 
-            }
-          },
-          required: ["mitigation_actions", "rationale"]
-        }
-      }
-    });
-
-    const json = JSON.parse(response.text || '{}');
-    return {
-      text: json.mitigation_actions || "No suggestions available.",
-      feedback: json.rationale || "No rationale provided."
-    };
-  } catch (error) {
-    console.error("Gemini Error:", error);
-    return { 
-      text: "Unable to generate suggestions at this time.", 
-      feedback: "An error occurred while contacting the AI service." 
-    };
+// Fix for TypeScript error TS2580
+declare var process: {
+  env: {
+    API_KEY: string;
   }
 };
 
-export const improveRiskDescription = async (currentDescription: string, riskTitle: string): Promise<AiSuggestion> => {
-  if (!ai) {
-     return {
-      text: currentDescription,
-      feedback: "AI service unavailable (API Key missing)."
-    };
+const getApiKey = () => process.env.API_KEY || '';
+
+export interface ChatMessage {
+  role: 'user' | 'model';
+  text: string;
+}
+
+export const analyzeContractRisks = async (contract: ContractData): Promise<string> => {
+  const apiKey = getApiKey();
+
+  if (!apiKey) {
+    return "API Key not configured. Unable to perform AI analysis.";
   }
 
   try {
-    const model = 'gemini-2.5-flash';
+    const ai = new GoogleGenAI({ apiKey: apiKey });
+    
     const prompt = `
-      You are a Risk Management Assistant. Your task is to rewrite a risk description to strictly follow the standard formula and provide constructive feedback.
+      You are a legal and risk expert for an oil and gas company. 
+      Analyze the following contract summary and provide a concise 3-bullet point executive risk assessment for the CEO.
+      Focus on financial exposure, operational criticality, and potential gaps in mitigation.
 
-      Standard Formula:
-      "There is a risk that [event], caused by [cause], which may result in [impact]."
+      Contract Title: ${contract.contractorName}
+      Scope: ${contract.scopeOfWork}
+      Amount: $${contract.amount}
+      Duration: ${contract.startDate} to ${contract.endDate}
+      Liability Cap: ${contract.liabilityCapPercent}%
+      
+      Evaluation Context:
+      - Technical: ${contract.technicalEvalSummary}
+      - Commercial: ${contract.commercialEvalSummary}
+      - Tender Process: ${contract.tenderProcessSummary}
 
-      Definitions:
-      1. Cause – what could trigger the risk.
-      2. Event – what the risk is (the uncertainty).
-      3. Impact – what happens if it materializes.
-
-      Input Data:
-      Risk Title: "${riskTitle}"
-      Current Draft: "${currentDescription}"
-
-      Instructions:
-      1. Analyze the Input Data.
-      2. Rewrite the description using EXACTLY the formula: "There is a risk that [event], caused by [cause], which may result in [impact]."
-      3. Provide feedback on the original draft. Explicitly state what was missing (e.g., "The original draft lacked a clear cause") or what was improved (e.g., "Clarified the impact statement").
+      Risk Profile:
+      - Deviations: ${contract.deviationsDescription || 'None'}
+      - Subcontracting: ${contract.subcontractingPercent}%
+      - Identified Risks: ${contract.riskDescription}
+      - Mitigations: ${contract.mitigationMeasures}
+      
+      Output format:
+      - [Risk Level: Low/Medium/High]: Summary sentence...
+      - Key Concern 1...
+      - Key Concern 2...
+      - (Optional) Mitigation Gaps...
     `;
 
     const response = await ai.models.generateContent({
-      model,
+      model: 'gemini-2.5-flash',
       contents: prompt,
-      config: {
-        responseMimeType: 'application/json',
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            rewritten_description: { 
-              type: Type.STRING, 
-              description: "The standardized risk description strictly following the formula." 
-            },
-            feedback: { 
-              type: Type.STRING, 
-              description: "Constructive feedback on the original draft and explanation of improvements." 
-            }
-          },
-          required: ["rewritten_description", "feedback"]
-        }
-      }
     });
 
-    const json = JSON.parse(response.text || '{}');
-    return {
-      text: json.rewritten_description || currentDescription,
-      feedback: json.feedback || "No feedback provided."
-    };
+    return response.text || "No analysis generated.";
   } catch (error) {
     console.error("Gemini Error:", error);
-    return { 
-      text: currentDescription, 
-      feedback: "Unable to analyze the description at this time." 
+    return "Error generating AI analysis. Please review manually.";
+  }
+};
+
+export const refineContractText = async (text: string, context: 'scope' | 'background'): Promise<string> => {
+  const apiKey = getApiKey();
+  if (!apiKey || !text || text.length < 5) return text;
+
+  try {
+    const ai = new GoogleGenAI({ apiKey: apiKey });
+    
+    const prompt = `
+      You are a senior contract administrator in the Oil & Gas industry.
+      Rewrite the following rough text to be professional, precise, and legally sound.
+      
+      Context: ${context === 'scope' ? 'Scope of Work Description' : 'Executive Business Case/Background'}
+      Input Text: "${text}"
+      
+      Rules:
+      - Improve clarity and professional tone.
+      - Fix grammar.
+      - Keep it concise but detailed enough for a legal contract.
+      - Do not add made-up details, just refine what is there.
+      - Return ONLY the rewritten text, no conversational filler.
+    `;
+
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: prompt,
+    });
+
+    return response.text || text;
+  } catch (error) {
+    console.error("Gemini Refine Error:", error);
+    return text; // Fallback to original
+  }
+};
+
+export const sendContractQuery = async (
+  contract: ContractData, 
+  history: ChatMessage[], 
+  message: string
+): Promise<string> => {
+  const apiKey = getApiKey();
+  if (!apiKey) return "API Key not configured.";
+
+  try {
+    const ai = new GoogleGenAI({ apiKey: apiKey });
+    
+    // Construct System Instruction based on contract metadata
+    const systemInstruction = `
+      You are an intelligent Contract Assistant for Trident Energy.
+      You are helpful, precise, and professional.
+      
+      Your goal is to answer questions about the specific contract provided below.
+      Do not invent facts. If the information is not in the contract summary or attached documents, state that it is not available.
+      
+      --- CONTRACT DATA ---
+      Title: ${contract.title}
+      Contractor: ${contract.contractorName}
+      Entity: ${contract.entity}
+      Department: ${contract.department}
+      Type: ${contract.contractorName} (${contract.contractType})
+      Value: ${contract.originalAmount} ${contract.originalCurrency} (USD Eqv: ${contract.amount})
+      Dates: ${contract.startDate} to ${contract.endDate}
+      
+      Scope of Work: ${contract.scopeOfWork}
+      Background/Need: ${contract.backgroundNeed}
+      
+      Commercial Terms:
+      - Pricing: ${contract.priceStructure}
+      - Liability Cap: ${contract.liabilityCapPercent}%
+      - Subcontracting: ${contract.isSubcontracting ? 'Allowed (' + contract.subcontractingPercent + '%)' : 'Not Allowed'}
+      
+      Evaluations:
+      - Technical: ${contract.technicalEvalSummary}
+      - Commercial: ${contract.commercialEvalSummary}
+      
+      Risks:
+      - Identified: ${contract.riskDescription}
+      - Mitigation: ${contract.mitigationMeasures}
+      - Deviations: ${contract.deviationsDescription}
+      
+      Vendor Info:
+      - DDQ: ${contract.ddqNumber} (Valid until ${contract.ddqValidityDate})
+      ---------------------
+    `;
+
+    // 1. Prepare Document Parts from Base64 data
+    const documentParts: Part[] = [];
+    if (contract.documents) {
+        contract.documents.forEach(doc => {
+            if (doc.base64) {
+                // Determine mimeType (default to pdf if unknown)
+                const mimeType = doc.type || 'application/pdf';
+                // Clean base64 string: remove data URL prefix if present
+                const base64Data = doc.base64.includes(',') ? doc.base64.split(',')[1] : doc.base64;
+                
+                documentParts.push({
+                    inlineData: {
+                        mimeType: mimeType,
+                        data: base64Data
+                    }
+                });
+            }
+        });
+    }
+
+    // 2. Create the initial history context
+    // We inject a fake "User" message at the start containing the documents.
+    // This allows Gemini to "see" the files in the context window.
+    const initialContextMessage: Content = {
+        role: 'user',
+        parts: [
+            { text: "Here are the uploaded contract documents for reference. Please use them to answer my questions." },
+            ...documentParts
+        ]
     };
+
+    const modelAck: Content = {
+        role: 'model',
+        parts: [{ text: "Understood. I have reviewed the contract documents and am ready to answer your questions." }]
+    };
+
+    // 3. Convert user's chat history to Gemini Content format
+    const userHistory: Content[] = history.map(msg => ({
+      role: msg.role,
+      parts: [{ text: msg.text }]
+    }));
+
+    // Combine: [Docs Context] -> [Model Ack] -> [Previous Chat]
+    // Note: If no documents, we skip the initial context to save tokens/complexity
+    const finalHistory: Content[] = documentParts.length > 0 
+        ? [initialContextMessage, modelAck, ...userHistory] 
+        : userHistory;
+
+    const chat = ai.chats.create({
+      model: 'gemini-2.5-flash',
+      config: {
+        systemInstruction: systemInstruction,
+      },
+      history: finalHistory
+    });
+
+    const response = await chat.sendMessage({ message: message });
+    return response.text || "I couldn't generate a response.";
+
+  } catch (error) {
+    console.error("Gemini Chat Error:", error);
+    return "I'm having trouble connecting to the AI service or processing the documents right now. Please try again.";
   }
 };

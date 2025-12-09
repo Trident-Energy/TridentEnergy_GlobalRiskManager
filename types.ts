@@ -1,160 +1,171 @@
 
-
-export enum Country {
-  UK = 'UK',
-  BR = 'BR',
-  GQ = 'GQ', // Updated from EG
-  CG = 'CG',
-  ALL = 'ALL'
+export enum Entity {
+  BRAZIL = 'Brazil',
+  CONGO = 'Congo',
+  EQUATORIAL_GUINEA = 'Equatorial Guinea',
+  LONDON = 'London'
 }
 
-export enum RiskStatus {
-  OPEN = 'Open',
-  UPDATED = 'Updated',
-  REVIEWED = 'Reviewed',
-  CLOSED = 'Closed'
+export enum UserRole {
+  SCM = 'SCM',
+  CORPORATE_LEGAL = 'Contracts Lead',
+  CEO = 'CEO',
+  ADMIN = 'Admin'
+}
+
+export enum ContractStatus {
+  DRAFT = 'Draft',
+  SUBMITTED = 'Submitted', // Waiting for Corporate
+  PENDING_CEO = 'Pending CEO Approval',
+  APPROVED = 'Approved',
+  REJECTED = 'Rejected',
+  CHANGES_REQUESTED = 'Changes Requested'
 }
 
 export enum RiskCategory {
-  COMPLIANCE = 'Compliance Risk',
-  FINANCIAL = 'Financial Risk',
-  OPERATIONAL = 'Operational Risk',
-  STRATEGIC = 'Strategic Risk'
+  FINANCIAL = 'Financial',
+  LEGAL = 'Legal/Contractual',
+  OPERATIONAL = 'Operational',
+  ENVIRONMENTAL = 'Environmental/Regulatory',
+  THIRD_PARTY = 'Third Party'
 }
-
-export enum ControlRating {
-  EXCELLENT = 'Excellent',
-  GOOD = 'Good',
-  FAIR = 'Fair',
-  POOR = 'Poor',
-  UNSATISFACTORY = 'Unsatisfactory'
-}
-
-export enum RiskLevel {
-  LOW = 'Low',
-  MODERATE = 'Moderate',
-  SIGNIFICANT = 'Significant'
-}
-
-export enum EscalationLevel {
-  FUNCTIONAL_MANAGER = 'Functional Manager Escalation',
-  TEML_FUNCTIONAL_REVIEW = 'TEML Functional Review',
-  TEML_LEADERSHIP = 'TEML Leadership Team Escalation',
-  COUNTRY_MANAGER = 'Country Manager Escalation',
-  CORPORATE_RISK = 'Corporate Risk Profile'
-}
-
-export type UserRole = 'Manager' | 'RMIA' | 'Functional Manager' | 'TEML Functional' | 'Country Manager' | 'TEML Leadership Team' | 'CEO';
 
 export interface User {
   id: string;
   name: string;
-  email: string;
   role: UserRole;
-  groups: string[]; // e.g., "Country Risk Register BR"
+  entity: Entity;
   avatar?: string;
-  country?: Country;
+  isActive: boolean;
+}
+
+export interface RiskTrigger {
+  id: string;
+  category: RiskCategory;
+  description: string;
+  triggered: boolean;
+}
+
+export interface AuditLog {
+  id: string;
+  timestamp: number;
+  userId: string;
+  userName: string;
+  action: string;
+  details?: string;
 }
 
 export interface Comment {
   id: string;
-  riskId: string;
   userId: string;
   userName: string;
-  date: string; // ISO date string
+  role: UserRole;
   text: string;
-  parentId?: string; // ID of the parent comment if this is a reply
-  likes?: string[]; // Array of user IDs who acknowledged the comment
+  timestamp: number;
+  likes?: string[]; // Array of User IDs who liked the comment
 }
 
-export interface Attachment {
+export interface ContractReview {
+  id: string;
+  reviewerId: string;
+  reviewerName: string;
+  role: UserRole;
+  decision: 'Approved' | 'Rejected' | 'Changes Requested';
+  comment: string; // Justification
+  timestamp: number;
+  isAdHoc?: boolean;
+}
+
+export interface ContractDocument {
   id: string;
   name: string;
-  url: string; // In a real app, this is the cloud storage URL. For mock, it's a blob or placeholder.
   type: string;
-  size: number;
-  uploadDate: string;
+  size: number; // in bytes
+  uploadDate: number;
+  base64?: string; // Data URL for AI analysis
 }
 
-export interface ActionPlan {
-  id: string;
-  riskId: string;
-  title: string; // "Action"
-  description: string; // "Detailed mitigation action plan"
-  owner: string;
-  dueDate: string;
-  status: 'Open' | 'Closed' | 'Approved';
-  attachments?: Attachment[];
-}
-
-export interface AuditLogEntry {
-  id: string;
-  date: string; // ISO date string
-  user: string;
-  action: string; // Short description e.g., "Status Changed"
-  details: string; // Detailed change e.g., "From 'Open' to 'Reviewed'"
-}
-
-export interface EscalationEntry {
-  level: EscalationLevel;
+export interface AdHocReviewer {
   userId: string;
   userName: string;
-  date: string;
+  role: UserRole;
+  addedBy: string;
+  addedAt: number;
 }
 
-export interface RiskControl {
+export interface ContractData {
   id: string;
-  description: string;
-  rating: ControlRating;
-}
+  // Section 1: Company Details
+  entity: Entity;
+  department: string;
+  sapNumber?: string;
+  
+  // Vendor Qualification (DDQ)
+  ddqNumber?: string;
+  ddqDate?: string;
+  ddqValidityDate?: string;
+  otherChecksDetails?: string;
 
-export interface ScoreSnapshot {
-  date: string;
-  score: number;
-  quarter: string; // e.g. "Q1 2024"
-}
-
-export interface Risk {
-  id: string;
-  creationDate: string; // ISO Date "YYYY-MM-DD"
-  register: string; // e.g. "BR Asset", "UK Corporate"
-  country: Country;
+  // Section 2: Contract Info
   title: string;
-  description: string;
-  owner: string;
-  functionArea: string; // e.g. "Operations", "Finance"
-  category: RiskCategory;
-  groupPrincipalRisk: string;
+  project?: string; // New Field
+  contractorName: string;
+  contractType: 'CAPEX' | 'OPEX' | 'MIXED'; 
   
-  // Inherent
-  inherentImpact: number; // 1-5
-  inherentLikelihood: number; // 1-5
+  // Financials
+  amount: number; // USD Equivalent (Used for risk logic)
+  currency: string; // Usually 'USD' in the backend, but we keep it for reference
   
-  // Residual
-  controlsText: string; // Kept for backward compatibility/summary
-  controls: RiskControl[]; // Granular controls
-  controlsRating: ControlRating; // Overall/Average rating
-  residualImpact: number; // 1-5
-  residualLikelihood: number; // 1-5
-  
-  // Trend Analysis
-  previousScore?: number; // Snapshot of the Residual Score from the previous review cycle
-  historicalScores?: ScoreSnapshot[]; // Last 4 quarters
+  originalAmount: number; // Amount in local currency
+  originalCurrency: string; // 'USD', 'BRL', 'GBP', 'XAF'
+  exchangeRate: number; // Rate used for conversion
 
-  // Meta
-  status: RiskStatus;
-  lastReviewDate: string;
-  lastReviewer: string;
-  collaborators: string[];
-  history?: AuditLogEntry[];
-  
-  // Escalation
-  escalations?: EscalationEntry[];
-}
+  startDate: string;
+  endDate: string;
+  hasExtensionOptions: boolean;
+  scopeOfWork: string;
 
-// Helper types for charts
-export interface RiskDistribution {
-  name: string;
-  value: number;
-  color: string;
+  // Section 3: Executive Summary
+  backgroundNeed: string;
+  tenderProcessSummary: string;
+  specialConsiderations: string;
+
+  // Section 4: Evaluation
+  technicalEvalSummary: string;
+  commercialEvalSummary: string;
+
+  // Section 5: T&Cs
+  isStandardTerms: boolean;
+  deviationsDescription?: string;
+  liabilityCapPercent: number; // For trigger check
+
+  // Section 6: Subcontracting
+  isSubcontracting: boolean;
+  subcontractingPercent: number;
+
+  // Section 7: Risk
+  riskDescription: string;
+  mitigationMeasures: string;
+
+  // Section 8: Pricing
+  priceStructure: 'Fixed' | 'Time & Materials' | 'Mixed';
+  
+  // System Metadata
+  status: ContractStatus;
+  submitterId: string;
+  submissionDate?: number;
+  detectedTriggers: RiskTrigger[];
+  isHighRisk: boolean;
+  
+  // Approvals/Comments/Docs
+  auditTrail: AuditLog[];
+  comments: Comment[];
+  hasUnreadComments?: boolean;
+  reviews: ContractReview[];
+  adHocReviewers: AdHocReviewer[];
+  documents: ContractDocument[];
+  aiRiskAnalysis?: string;
+  corporateApprovals: {
+    legal?: boolean;
+  };
 }
