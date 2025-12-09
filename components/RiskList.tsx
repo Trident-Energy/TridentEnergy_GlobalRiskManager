@@ -1,10 +1,8 @@
 
-
 import React, { useState, useEffect } from 'react';
-import { Risk, Country, ActionPlan, User, RiskStatus, Comment } from '../types';
+import { Risk, Country, ActionPlan, User, RiskStatus, Comment, SortOption } from '../types';
 import { calculateRiskScore, getRiskLevel, getControlRatingColor, COUNTRIES, ESCALATION_LEVELS } from '../constants';
 import { ChevronRight, ChevronLeft, ChevronRight as ChevronRightIcon, AlertTriangle, User as UserIcon, Users, ArrowUpDown, MessageSquare, ArrowUp, ArrowDown, Square, Triangle, ShieldAlert, AlertCircle } from 'lucide-react';
-import { SortOption } from '../App';
 
 interface Props {
   risks: Risk[];

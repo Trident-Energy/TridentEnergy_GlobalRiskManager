@@ -1,14 +1,10 @@
 
 
-
-
-
-
 import React, { useState, useEffect, useRef } from 'react';
 import { Risk, ActionPlan, Comment, RiskStatus, ControlRating, RiskCategory, Country, User, AuditLogEntry, Attachment, EscalationLevel, EscalationEntry, UserRole, RiskControl } from '../types';
-import { calculateRiskScore, getRiskLevel, COUNTRIES, IMPACT_OPTIONS, LIKELIHOOD_OPTIONS, PRINCIPAL_RISKS, PRINCIPAL_RISKS_MAPPING, RISK_REGISTER_DATA, ESCALATION_LEVELS, GROUPS, getRatingValue, getRatingFromValue } from '../constants';
+import { calculateRiskScore, getRiskLevel, COUNTRIES, IMPACT_OPTIONS, LIKELIHOOD_OPTIONS, PRINCIPAL_RISKS_MAPPING, RISK_REGISTER_DATA, ESCALATION_LEVELS, getRatingValue, getRatingFromValue } from '../constants';
 import { generateMitigationAdvice, improveRiskDescription } from '../services/geminiService';
-import { X, Save, MessageSquare, Plus, Sparkles, Calendar, ChevronDown, Trash2, Users, Search, AlertTriangle, Send, CornerDownRight, Edit2, History, Clock, User as UserIcon, Paperclip, FileText, Download, ShieldAlert, Shield, Check, Info, Lightbulb, AlertCircle, ArrowDown, Activity, CheckCircle, Target, UserCheck, Briefcase, ThumbsUp, Star, TrendingUp } from 'lucide-react';
+import { X, Save, MessageSquare, Plus, Sparkles, Calendar, ChevronDown, Trash2, Search, AlertTriangle, Send, CornerDownRight, Edit2, Clock, User as UserIcon, Paperclip, FileText, Download, ShieldAlert, Shield, Activity, ThumbsUp, Star, TrendingUp, Target, AlertCircle, ArrowDown, Lightbulb, Info } from 'lucide-react';
 
 interface Props {
   risk: Risk | null; // null means 'New Risk'
@@ -140,16 +136,6 @@ const GUIDANCE_LIKELIHOOD = (
   </ul>
 );
 
-const GUIDANCE_CONTROLS = (
-  <ul className="list-none space-y-1">
-    <li><strong className="text-white">Excellent:</strong> Controls are robust, documented, and tested regularly.</li>
-    <li><strong className="text-white">Good:</strong> Controls are effective but may have minor documentation gaps.</li>
-    <li><strong className="text-white">Fair:</strong> Controls exist but effectiveness is inconsistent.</li>
-    <li><strong className="text-white">Poor:</strong> Controls are weak or largely manual/unreliable.</li>
-    <li><strong className="text-white">Unsatisfactory:</strong> No effective controls in place.</li>
-  </ul>
-);
-
 // Helper to render a single comment thread item
 interface CommentItemProps {
   comment: Comment;
@@ -178,7 +164,7 @@ const CommentItem: React.FC<CommentItemProps> = ({
 
   // Find the role of the commenter
   const commenter = users.find(u => u.id === comment.userId);
-  const commenterRole = commenter ? commenter.role : 'Unknown';
+  const commenterRole = commenter ? commenter.role : 'Manager'; // Default to manager if not found
 
   // Likes logic
   const likes = comment.likes || [];
@@ -472,12 +458,6 @@ const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave
   useEffect(() => {
     if (!formData.controls || formData.controls.length === 0) return;
     
-    // If the user has manually changed the dropdown recently, don't overwrite it immediately?
-    // Requirement says "Admin or owner can changed the proposed average value". 
-    // The easiest way is to calculate it, but if they change the dropdown, we set a flag to stop auto-calc until controls change again.
-    // However, usually adding a new control *should* trigger recalculation.
-    // Let's implement simpler logic: Always recalculate when controls change. User can override afterwards.
-    
     const totalScore = formData.controls.reduce((acc, curr) => acc + getRatingValue(curr.rating), 0);
     const avgScore = totalScore / formData.controls.length;
     const calculatedRating = getRatingFromValue(avgScore);
@@ -485,8 +465,6 @@ const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave
     if (!userManuallySetRating) {
       setFormData(prev => ({ ...prev, controlsRating: calculatedRating }));
     } else {
-      // Reset the flag if the controls list length changes, assuming they want a new calculation
-      // But for now, let's keep it simple: Calculation happens on change.
       setFormData(prev => ({ ...prev, controlsRating: calculatedRating }));
     }
 
@@ -1049,7 +1027,7 @@ const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave
                              </button>
                              {countryOpen && (
                                 <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl z-20 overflow-hidden">
-                                   {COUNTRIES.map(c => (
+                                   {COUNTRIES.map((c) => (
                                       <button 
                                         key={c.code}
                                         onClick={() => handleCountrySelect(c.code as Country)}
@@ -1107,7 +1085,7 @@ const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave
                            disabled={!canEdit}
                            className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white dark:bg-slate-800 dark:text-white"
                          >
-                            {RISK_REGISTER_DATA.map(r => (
+                            {RISK_REGISTER_DATA.map((r) => (
                               <option key={r.register} value={r.register}>{r.register}</option>
                             ))}
                          </select>
@@ -1123,7 +1101,7 @@ const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave
                             disabled={!canEdit}
                             className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white dark:bg-slate-800 dark:text-white"
                           >
-                             {availableFunctions.map(f => <option key={f} value={f}>{f}</option>)}
+                             {availableFunctions.map((f) => <option key={f} value={f}>{f}</option>)}
                           </select>
                        </div>
 
@@ -1137,7 +1115,7 @@ const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave
                             disabled={!canEdit}
                             className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white dark:bg-slate-800 dark:text-white"
                           >
-                             {Object.values(RiskCategory).map(c => <option key={c} value={c}>{c}</option>)}
+                             {Object.values(RiskCategory).map((c) => <option key={c} value={c}>{c}</option>)}
                           </select>
                        </div>
 
@@ -1151,7 +1129,7 @@ const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave
                             disabled={!canEdit}
                             className="w-full px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white dark:bg-slate-800 dark:text-white"
                           >
-                             {(PRINCIPAL_RISKS_MAPPING[formData.category] || []).map(pr => (
+                             {(PRINCIPAL_RISKS_MAPPING[formData.category] || []).map((pr) => (
                                <option key={pr} value={pr} title={pr}>{pr}</option>
                              ))}
                           </select>
@@ -1243,7 +1221,7 @@ const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave
                                 disabled={!canEdit}
                                 className="w-full p-2.5 border border-slate-300 dark:border-slate-600 rounded-lg text-sm bg-white dark:bg-slate-800 dark:text-white shadow-sm"
                               >
-                                {IMPACT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                {IMPACT_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                               </select>
                               <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1.5 leading-tight">
                                 {IMPACT_DEFINITIONS[formData.inherentImpact]}
@@ -1261,7 +1239,7 @@ const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave
                                 disabled={!canEdit}
                                 className="w-full p-2.5 border border-slate-300 dark:border-slate-600 rounded-lg text-sm bg-white dark:bg-slate-800 dark:text-white shadow-sm"
                               >
-                                {LIKELIHOOD_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                {LIKELIHOOD_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                               </select>
                               <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1.5 leading-tight">
                                 {LIKELIHOOD_DEFINITIONS[formData.inherentLikelihood]}
@@ -1376,7 +1354,9 @@ const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave
                          <div className="pt-4 border-t border-slate-200 dark:border-slate-700">
                             <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2 flex items-center justify-between">
                                <span>Controls Rating (Average)</span>
-                               <span className="text-xs font-normal text-slate-500">Calculated from individual controls</span>
+                               <span className="text-xs font-normal text-slate-500">
+                                {userManuallySetRating ? "Manually assessed" : "Calculated from individual controls"}
+                               </span>
                             </label>
                             <select 
                               name="controlsRating"
@@ -1385,7 +1365,7 @@ const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave
                               disabled={!canEdit}
                               className="w-full md:w-1/2 px-4 py-2 border-2 border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white dark:bg-slate-800 dark:text-white font-bold"
                             >
-                               {Object.values(ControlRating).map(r => <option key={r} value={r}>{r}</option>)}
+                               {Object.values(ControlRating).map((r) => <option key={r} value={r}>{r}</option>)}
                             </select>
                          </div>
                       </div>
@@ -1434,7 +1414,7 @@ const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave
                                 disabled={!canEdit}
                                 className="w-full p-2.5 border border-slate-300 dark:border-slate-600 rounded-lg text-sm bg-slate-50 dark:bg-slate-900 dark:text-white font-bold"
                               >
-                                {IMPACT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                {IMPACT_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                               </select>
                               <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1.5 leading-tight">
                                 {IMPACT_DEFINITIONS[formData.residualImpact]}
@@ -1452,7 +1432,7 @@ const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave
                                 disabled={!canEdit}
                                 className="w-full p-2.5 border border-slate-300 dark:border-slate-600 rounded-lg text-sm bg-slate-50 dark:bg-slate-900 dark:text-white font-bold"
                               >
-                                {LIKELIHOOD_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                {LIKELIHOOD_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                               </select>
                               <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1.5 leading-tight">
                                 {LIKELIHOOD_DEFINITIONS[formData.residualLikelihood]}
@@ -1515,7 +1495,7 @@ const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave
                              'border-amber-200 bg-amber-50 text-amber-700 dark:bg-slate-800 dark:border-amber-900 dark:text-amber-400'
                            }`}
                         >
-                           {Object.values(RiskStatus).map(s => (
+                           {Object.values(RiskStatus).map((s) => (
                              <option 
                                key={s} 
                                value={s}
@@ -1533,7 +1513,7 @@ const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave
                <div className="pt-4 border-t border-slate-200 dark:border-slate-800">
                   <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-3">Collaborators</label>
                   <div className="flex flex-wrap gap-2 mb-3">
-                     {formData.collaborators.map(c => (
+                     {formData.collaborators.map((c) => (
                         <span key={c} className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-sm border border-slate-200 dark:border-slate-700">
                            <UserIcon size={12} /> {c}
                            {canEdit && <button onClick={() => handleRemoveCollaborator(c)} className="hover:text-red-500"><X size={14} /></button>}
@@ -1568,7 +1548,7 @@ const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave
                            {filteredCollaboratorOptions.length === 0 ? (
                              <div className="p-3 text-sm text-slate-500">No users found</div>
                            ) : (
-                             filteredCollaboratorOptions.map(u => (
+                             filteredCollaboratorOptions.map((u) => (
                                <button 
                                  key={u.id}
                                  onClick={() => handleAddCollaborator(u.name)}
@@ -1626,7 +1606,7 @@ const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave
                            />
                            {showActionOwnerList && (
                              <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg shadow-xl z-20 max-h-48 overflow-y-auto">
-                                {users.filter(u => u.name.toLowerCase().includes((newAction.owner || '').toLowerCase())).map(u => (
+                                {users.filter(u => u.name.toLowerCase().includes((newAction.owner || '').toLowerCase())).map((u) => (
                                    <button 
                                      key={u.id}
                                      onMouseDown={() => setNewAction({...newAction, owner: u.name})}
@@ -1674,7 +1654,7 @@ const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave
                          </div>
                          {newAction.attachments && newAction.attachments.length > 0 && (
                             <div className="flex flex-wrap gap-2">
-                               {newAction.attachments.map(att => (
+                               {newAction.attachments.map((att) => (
                                   <div key={att.id} className="flex items-center gap-2 px-3 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs">
                                      <FileText size={12} className="text-blue-500" />
                                      <span className="truncate max-w-[150px]">{att.name}</span>
@@ -1699,16 +1679,16 @@ const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave
                    </div>
                 ) : (
                    <div className="space-y-4">
-                      {actions.map(action => (
+                      {actions.map((action) => (
                          <div key={action.id} className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow">
                             {editingActionId === action.id && editingActionData ? (
                                // Edit Mode
                                <div className="space-y-4">
                                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                      <input 
-                                       value={editingActionData.title}
-                                       onChange={(e) => setEditingActionData({...editingActionData, title: e.target.value})}
-                                       className="px-3 py-2 border rounded-lg text-sm dark:bg-slate-900 dark:border-slate-600"
+                                        value={editingActionData.title}
+                                        onChange={(e) => setEditingActionData({...editingActionData, title: e.target.value})}
+                                        className="px-3 py-2 border rounded-lg text-sm dark:bg-slate-900 dark:border-slate-600"
                                      />
                                      <select 
                                        value={editingActionData.status}
@@ -1734,7 +1714,7 @@ const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave
                                     />
                                     {showEditActionOwnerList && (
                                        <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg shadow-xl z-20 max-h-48 overflow-y-auto">
-                                          {users.filter(u => u.name.toLowerCase().includes((editingActionData.owner || '').toLowerCase())).map(u => (
+                                          {users.filter(u => u.name.toLowerCase().includes((editingActionData.owner || '').toLowerCase())).map((u) => (
                                              <button 
                                                 key={u.id}
                                                 onMouseDown={() => setEditingActionData({...editingActionData, owner: u.name})}
@@ -1780,7 +1760,7 @@ const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave
                                   {/* Attachments List */}
                                   {action.attachments && action.attachments.length > 0 && (
                                      <div className="flex flex-wrap gap-2 mb-3">
-                                        {action.attachments.map(att => (
+                                        {action.attachments.map((att) => (
                                            <a key={att.id} href={att.url} target="_blank" rel="noreferrer" className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-xs text-slate-700 dark:text-slate-300 hover:bg-slate-100 transition-colors">
                                               <FileText size={12} className="text-blue-500" />
                                               {att.name}
@@ -1897,7 +1877,7 @@ const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave
                    </div>
                    
                    <div className="divide-y divide-slate-100 dark:divide-slate-800">
-                      {ESCALATION_LEVELS.map(level => {
+                      {ESCALATION_LEVELS.map((level) => {
                          // Check if this level is currently active (in formData)
                          const activeEntries = formData.escalations?.filter(e => e.level === level) || [];
                          const isChecked = activeEntries.length > 0;
@@ -1932,7 +1912,7 @@ const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave
                                   <div className="flex flex-wrap gap-2 items-center">
                                      {/* List of Escalated Users */}
                                      {activeEntries.length > 0 ? (
-                                        activeEntries.map(entry => (
+                                        activeEntries.map((entry) => (
                                            <div key={entry.userId} className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border ${isChecked ? 'bg-white dark:bg-slate-900 border-orange-200 dark:border-orange-800' : 'bg-slate-100 dark:bg-slate-800 border-transparent opacity-60'}`}>
                                               <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${isChecked ? 'bg-orange-100 text-orange-600' : 'bg-slate-200 text-slate-500'}`}>
                                                  {entry.userName.charAt(0)}
@@ -1981,7 +1961,7 @@ const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave
                                                     {/* Dropdown Results */}
                                                     {escalationSearch && (
                                                        <div className="absolute top-full left-0 mt-1 w-64 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-xl z-50 max-h-48 overflow-y-auto">
-                                                          {users.filter(u => u.name.toLowerCase().includes(escalationSearch.toLowerCase())).map(u => (
+                                                          {users.filter(u => u.name.toLowerCase().includes(escalationSearch.toLowerCase())).map((u) => (
                                                              <button 
                                                                 key={u.id}
                                                                 onClick={() => handleAddEscalationUser(u, level)}

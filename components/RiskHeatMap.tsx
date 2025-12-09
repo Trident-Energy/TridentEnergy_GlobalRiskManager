@@ -121,7 +121,7 @@ const RiskHeatMap: React.FC<Props> = ({
           </div>
           
           {/* X-Axis Label */}
-          <div className="mt-3 text-[9px] font-bold text-slate-400 uppercase tracking-widest text-left">
+          <div className="mt-3 text-[9px] font-bold text-slate-400 uppercase tracking-widest text-center">
             Impact
           </div>
        </div>

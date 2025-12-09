@@ -70,7 +70,7 @@ const AdminBulkActions: React.FC<Props> = ({ users, risks, onBulkEscalate, onBul
               value={escCountry}
               onChange={(e) => setEscCountry(e.target.value as Country)}
             >
-              {COUNTRIES.map(c => <option key={c.code} value={c.code}>{c.label}</option>)}
+              {COUNTRIES.map((c) => <option key={c.code} value={c.code}>{c.label}</option>)}
             </select>
           </div>
 
@@ -82,7 +82,7 @@ const AdminBulkActions: React.FC<Props> = ({ users, risks, onBulkEscalate, onBul
               onChange={(e) => setEscRegister(e.target.value)}
             >
               <option value="ALL">All Registers</option>
-              {RISK_REGISTER_DATA.map(r => <option key={r.register} value={r.register}>{r.register}</option>)}
+              {RISK_REGISTER_DATA.map((r) => <option key={r.register} value={r.register}>{r.register}</option>)}
             </select>
           </div>
 
@@ -93,7 +93,7 @@ const AdminBulkActions: React.FC<Props> = ({ users, risks, onBulkEscalate, onBul
               value={escLevel}
               onChange={(e) => setEscLevel(e.target.value as EscalationLevel)}
             >
-              {ESCALATION_LEVELS.map(l => <option key={l} value={l}>{l}</option>)}
+              {ESCALATION_LEVELS.map((l) => <option key={l} value={l}>{l}</option>)}
             </select>
           </div>
 
@@ -105,7 +105,7 @@ const AdminBulkActions: React.FC<Props> = ({ users, risks, onBulkEscalate, onBul
               onChange={(e) => setEscUser(e.target.value)}
             >
               <option value="">Select User...</option>
-              {users.map(u => <option key={u.id} value={u.id}>{u.name} ({u.role})</option>)}
+              {users.map((u) => <option key={u.id} value={u.id}>{u.name} ({u.role})</option>)}
             </select>
           </div>
         </div>
@@ -142,7 +142,7 @@ const AdminBulkActions: React.FC<Props> = ({ users, risks, onBulkEscalate, onBul
               onChange={(e) => setTransferFrom(e.target.value)}
             >
               <option value="">Select User...</option>
-              {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+              {users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
             </select>
           </div>
 
@@ -158,7 +158,7 @@ const AdminBulkActions: React.FC<Props> = ({ users, risks, onBulkEscalate, onBul
               onChange={(e) => setTransferTo(e.target.value)}
             >
               <option value="">Select User...</option>
-              {users.filter(u => u.id !== transferFrom).map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+              {users.filter(u => u.id !== transferFrom).map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
             </select>
           </div>
         </div>
@@ -194,7 +194,7 @@ const AdminBulkActions: React.FC<Props> = ({ users, risks, onBulkEscalate, onBul
               value={collabCountry}
               onChange={(e) => setCollabCountry(e.target.value as Country)}
             >
-              {COUNTRIES.map(c => <option key={c.code} value={c.code}>{c.label}</option>)}
+              {COUNTRIES.map((c) => <option key={c.code} value={c.code}>{c.label}</option>)}
             </select>
           </div>
 
@@ -206,7 +206,7 @@ const AdminBulkActions: React.FC<Props> = ({ users, risks, onBulkEscalate, onBul
               onChange={(e) => setCollabRegister(e.target.value)}
             >
               <option value="ALL">All Registers</option>
-              {RISK_REGISTER_DATA.map(r => <option key={r.register} value={r.register}>{r.register}</option>)}
+              {RISK_REGISTER_DATA.map((r) => <option key={r.register} value={r.register}>{r.register}</option>)}
             </select>
           </div>
 
@@ -218,7 +218,7 @@ const AdminBulkActions: React.FC<Props> = ({ users, risks, onBulkEscalate, onBul
               onChange={(e) => setCollabUser(e.target.value)}
             >
               <option value="">Select User...</option>
-              {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+              {users.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
             </select>
           </div>
           
@@ -308,7 +308,7 @@ const AdminBulkActions: React.FC<Props> = ({ users, risks, onBulkEscalate, onBul
                   onClick={() => {
                     onBulkAddCollaborator(collabCountry, collabRegister, collabUser);
                     setShowCollabConfirm(false);
-                  }} 
+                  }}
                   className="flex-1 px-3 py-2 bg-purple-600 text-white font-bold rounded-lg"
                 >
                   Confirm
@@ -317,7 +317,6 @@ const AdminBulkActions: React.FC<Props> = ({ users, risks, onBulkEscalate, onBul
           </div>
         </div>
       )}
-
     </div>
   );
 };

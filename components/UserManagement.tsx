@@ -1,9 +1,8 @@
 
-
 import React, { useState, useEffect } from 'react';
 import { User, UserRole, EscalationLevel, Country } from '../types';
-import { GROUPS, ESCALATION_LEVELS, MOCK_USERS, COUNTRIES } from '../constants';
-import { Plus, X, Save, Edit2, Trash2, User as UserIcon, Shield, Globe, Users, Check, Mail, ChevronDown, ChevronUp } from 'lucide-react';
+import { GROUPS, ESCALATION_LEVELS, COUNTRIES } from '../constants';
+import { Plus, X, Save, Edit2, Trash2, User as UserIcon, Shield, Globe, Check, Mail, ChevronDown } from 'lucide-react';
 
 interface Props {
   users: User[];
@@ -155,7 +154,7 @@ const UserManagement: React.FC<Props> = ({ users, onAddUser, onUpdateUser, onDel
                   <input 
                     type="text" 
                     placeholder="e.g. John Doe"
-                    value={formData.name}
+                    value={formData.name || ''}
                     onChange={(e) => setFormData({...formData, name: e.target.value})}
                     className="w-full pl-9 pr-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg text-sm bg-white dark:bg-slate-800 dark:text-white"
                   />
@@ -168,7 +167,7 @@ const UserManagement: React.FC<Props> = ({ users, onAddUser, onUpdateUser, onDel
                   <input 
                     type="email" 
                     placeholder="john@company.com"
-                    value={formData.email}
+                    value={formData.email || ''}
                     onChange={(e) => setFormData({...formData, email: e.target.value})}
                     className="w-full pl-9 pr-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg text-sm bg-white dark:bg-slate-800 dark:text-white"
                   />
@@ -186,7 +185,7 @@ const UserManagement: React.FC<Props> = ({ users, onAddUser, onUpdateUser, onDel
                     className="w-full pl-9 pr-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg text-sm bg-white dark:bg-slate-800 dark:text-white appearance-none"
                   >
                     <option value="">Global / No Specific Country</option>
-                    {COUNTRIES.map(c => (
+                    {COUNTRIES.map((c) => (
                       <option key={c.code} value={c.code}>{c.label}</option>
                     ))}
                   </select>
@@ -223,7 +222,7 @@ const UserManagement: React.FC<Props> = ({ users, onAddUser, onUpdateUser, onDel
                   <Globe size={16} className="text-blue-500" /> Regional Registers
                 </h4>
                 <div className="space-y-2">
-                  {GROUPS.map(group => (
+                  {GROUPS.map((group) => (
                     <label key={group.id} className="flex items-center gap-3 p-2 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-lg cursor-pointer transition-colors">
                       <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${formData.groups?.includes(group.id) ? 'bg-blue-600 border-blue-600' : 'bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600'}`}>
                         {formData.groups?.includes(group.id) && <Check size={12} className="text-white" />}
@@ -246,7 +245,7 @@ const UserManagement: React.FC<Props> = ({ users, onAddUser, onUpdateUser, onDel
                   <Shield size={16} className="text-orange-500" /> Escalation Authority
                 </h4>
                 <div className="space-y-2 max-h-48 overflow-y-auto pr-2 scrollbar-thin">
-                  {ESCALATION_LEVELS.map(level => (
+                  {ESCALATION_LEVELS.map((level) => (
                     <label key={level} className="flex items-center gap-3 p-2 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-lg cursor-pointer transition-colors">
                       <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${formData.groups?.includes(level) ? 'bg-orange-500 border-orange-500' : 'bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600'}`}>
                         {formData.groups?.includes(level) && <Check size={12} className="text-white" />}
@@ -300,7 +299,7 @@ const UserManagement: React.FC<Props> = ({ users, onAddUser, onUpdateUser, onDel
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-            {users.map(user => {
+            {users.map((user) => {
                // Separate groups into Registers and Escalations for visual clarity
                const registerGroups = user.groups.filter(g => GROUPS.some(gr => gr.id === g));
                const escalationGroups = user.groups.filter(g => ESCALATION_LEVELS.includes(g as any));
