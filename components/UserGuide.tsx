@@ -1,6 +1,7 @@
 
+
 import React, { useState } from 'react';
-import { BookOpen, AlertTriangle, Shield, TrendingUp, Target, Activity, CheckSquare, Sparkles, ChevronRight, LayoutDashboard, Grid2X2, Map, Table, AlertCircle, ArrowUp, ArrowDown, Square, Triangle } from 'lucide-react';
+import { BookOpen, AlertTriangle, Shield, TrendingUp, Target, Activity, CheckSquare, Sparkles, ChevronRight, LayoutDashboard, Grid2x2, Map, Table, AlertCircle, ArrowUp, ArrowDown, Square, Triangle } from 'lucide-react';
 
 const UserGuide: React.FC = () => {
   const [activeSection, setActiveSection] = useState('getting-started');
@@ -75,7 +76,7 @@ const UserGuide: React.FC = () => {
                 </div>
                 <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-lg border border-slate-100 dark:border-slate-700">
                    <h4 className="font-bold flex items-center gap-2 text-slate-700 dark:text-slate-200 mb-2">
-                      <Grid2X2 size={16} /> Risk Heatmap
+                      <Grid2x2 size={16} /> Risk Heatmap
                    </h4>
                    <p className="text-sm text-slate-500 dark:text-slate-400">A visual matrix (5x5) displaying risks based on Impact vs. Likelihood. Click any cell to filter the list below.</p>
                 </div>
@@ -554,12 +555,17 @@ const UserGuide: React.FC = () => {
                    <div className="w-0.5 h-4 bg-slate-300 ml-4"></div>
                    <div className="flex items-center gap-4">
                       <div className="w-8 h-8 rounded-full bg-orange-100 text-orange-600 flex items-center justify-center font-bold text-xs">3</div>
+                      <span className="text-sm text-slate-600 dark:text-slate-300">TEML Leadership Team Escalation</span>
+                   </div>
+                   <div className="w-0.5 h-4 bg-slate-300 ml-4"></div>
+                   <div className="flex items-center gap-4">
+                      <div className="w-8 h-8 rounded-full bg-orange-100 text-orange-600 flex items-center justify-center font-bold text-xs">4</div>
                       <span className="text-sm text-slate-600 dark:text-slate-300">Country Manager Escalation</span>
                    </div>
                    <div className="w-0.5 h-4 bg-slate-300 ml-4"></div>
                    <div className="flex items-center gap-4">
-                      <div className="w-8 h-8 rounded-full bg-red-100 text-red-600 flex items-center justify-center font-bold text-xs">4</div>
-                      <span className="text-sm text-slate-600 dark:text-slate-300 font-bold">TEML Leadership / Corporate Risk Profile</span>
+                      <div className="w-8 h-8 rounded-full bg-red-100 text-red-600 flex items-center justify-center font-bold text-xs">5</div>
+                      <span className="text-sm text-slate-600 dark:text-slate-300 font-bold">Corporate Risk Profile</span>
                    </div>
                 </div>
              </div>

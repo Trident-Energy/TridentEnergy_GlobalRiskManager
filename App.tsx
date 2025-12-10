@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { LayoutDashboard, BarChart3, Settings, Search, Plus, User as UserIcon, LogOut, XCircle, Download, RefreshCw, AlertCircle, AlertTriangle, Moon, Sun, Grid2x2, Columns, CheckSquare, Square, EyeOff, Shield, BookOpen } from 'lucide-react';
+import { LayoutDashboard, BarChart3, Settings, Search, Plus, User as UserIcon, LogOut, XCircle, Download, RefreshCw, AlertCircle, AlertTriangle, Moon, Sun, Grid2x2, Columns, CheckSquare, Square, EyeOff, Shield, BookOpen, Layers, ChevronDown, X } from 'lucide-react';
 import RiskDashboard from './components/RiskDashboard';
 import RiskList from './components/RiskList';
 import RiskDetail from './components/RiskDetail';
@@ -9,7 +9,7 @@ import UserManagement from './components/UserManagement';
 import AdminBulkActions from './components/AdminBulkActions';
 import UserGuide from './components/UserGuide';
 import { MOCK_RISKS, MOCK_ACTIONS, MOCK_COMMENTS, COUNTRIES, MOCK_USERS, GROUPS, calculateRiskScore, getRiskLevel, AVAILABLE_COLUMNS } from './constants';
-import { Country, Risk, ActionPlan, Comment, User, RiskStatus, RiskLevel, AuditLogEntry, UserRole, EscalationLevel, ScoreSnapshot, SortOption } from './types';
+import { Country, Risk, ActionPlan, Comment, User, RiskStatus, RiskLevel, AuditLogEntry, UserRole, EscalationLevel, ScoreSnapshot, SortOption, RiskCategory, ControlRating } from './types';
 import { CellFilter } from './components/RiskHeatMap';
 
 const NavItem = ({ icon, label, active, onClick }: any) => (
@@ -27,7 +27,7 @@ const NavItem = ({ icon, label, active, onClick }: any) => (
 );
 
 const App = () => {
-  const [currentView, setCurrentView] = useState<'dashboard' | 'categoryDashboard' | 'reports' | 'admin' | 'help'>('dashboard');
+  const [currentView, setCurrentView] = useState<'dashboard' | 'consolidated' | 'categoryDashboard' | 'reports' | 'admin' | 'help'>('dashboard');
   const [selectedCountry, setSelectedCountry] = useState<Country | 'ALL'>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
   
@@ -45,6 +45,10 @@ const App = () => {
   // Quick Filter State (Dashboard Interaction)
   const [quickFilter, setQuickFilter] = useState<'ALL' | 'MY_RISKS' | 'COLLAB' | 'ESCALATED'>('ALL');
   const [dashboardHeatMapFilter, setDashboardHeatMapFilter] = useState<CellFilter | null>(null);
+
+  // Quick Filter State (Consolidated Risks Interaction)
+  const [consolidatedQuickFilter, setConsolidatedQuickFilter] = useState<'ALL' | 'MY_RISKS' | 'COLLAB' | 'ESCALATED'>('ALL');
+  const [consolidatedHeatMapFilter, setConsolidatedHeatMapFilter] = useState<CellFilter | null>(null);
 
   // Column Visibility State
   // Default visible columns: all except 'id'
@@ -72,6 +76,12 @@ const App = () => {
   
   // Admin Confirmation Modal State
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+
+  // Consolidated Risks State
+  const [selectedRiskIds, setSelectedRiskIds] = useState<Set<string>>(new Set());
+  const [showConsolidateModal, setShowConsolidateModal] = useState(false);
+  const [newConsolidatedTitle, setNewConsolidatedTitle] = useState('');
+  const [newConsolidatedOwner, setNewConsolidatedOwner] = useState('');
 
   // Toggle Dark Mode
   useEffect(() => {
@@ -101,6 +111,67 @@ const App = () => {
     );
   };
 
+  const handleToggleSelectRisk = (riskId: string) => {
+    setSelectedRiskIds(prev => {
+      const next = new Set(prev);
+      if (next.has(riskId)) {
+        next.delete(riskId);
+      } else {
+        next.add(riskId);
+      }
+      return next;
+    });
+  };
+
+  const handleConsolidateRisks = () => {
+     if (!newConsolidatedTitle.trim()) return;
+
+     const selected = Array.from(selectedRiskIds);
+     const childRisks = risks.filter(r => selected.includes(r.id));
+     
+     // Determine parent properties (take from first or default)
+     const primaryChild = childRisks[0];
+
+     const newParentRisk: Risk = {
+        id: `GRP-${Date.now()}`, // Group ID
+        creationDate: new Date().toISOString().split('T')[0],
+        register: primaryChild.register,
+        country: primaryChild.country,
+        title: newConsolidatedTitle,
+        description: 'Consolidated Risk Group containing: ' + childRisks.map(r => r.title).join(', '),
+        owner: newConsolidatedOwner || currentUser.name,
+        functionArea: primaryChild.functionArea,
+        category: primaryChild.category,
+        groupPrincipalRisk: primaryChild.groupPrincipalRisk,
+        inherentImpact: Math.max(...childRisks.map(r => r.inherentImpact)),
+        inherentLikelihood: Math.max(...childRisks.map(r => r.inherentLikelihood)),
+        controlsText: 'See individual child risks for controls.',
+        controls: [],
+        controlsRating: ControlRating.FAIR,
+        residualImpact: Math.max(...childRisks.map(r => r.residualImpact)),
+        residualLikelihood: Math.max(...childRisks.map(r => r.residualLikelihood)),
+        status: RiskStatus.OPEN,
+        lastReviewDate: new Date().toISOString().split('T')[0],
+        lastReviewer: currentUser.name,
+        collaborators: [],
+        isConsolidatedGroup: true,
+        childRiskIds: selected,
+        history: [{
+           id: `H-${Date.now()}`,
+           date: new Date().toISOString(),
+           user: currentUser.name,
+           action: 'Risk Consolidated',
+           details: `Created consolidated group with ${selected.length} risks.`
+        }]
+     };
+
+     setRisks([newParentRisk, ...risks]);
+     setSelectedRiskIds(new Set());
+     setNewConsolidatedTitle('');
+     setNewConsolidatedOwner('');
+     setShowConsolidateModal(false);
+  };
+
   // Derived Lists for Dropdowns
   const uniqueOwners = useMemo(() => Array.from(new Set(risks.map(r => r.owner))).sort(), [risks]);
   const uniqueRegisters = useMemo(() => Array.from(new Set(risks.map(r => r.register))).sort(), [risks]);
@@ -108,8 +179,6 @@ const App = () => {
   const uniqueLastReviewers = useMemo(() => Array.from(new Set(risks.map(r => r.lastReviewer))).filter(Boolean).sort(), [risks]);
 
   // 1. Authorized Risks (Permissions Only)
-  // This list contains everything the user is ALLOWED to see, ignoring UI filters (search, country, etc.)
-  // Used for global stats and activity feed.
   const authorizedRisks = useMemo(() => {
     return risks.filter(r => {
       // PERMISSION CHECK
@@ -117,7 +186,6 @@ const App = () => {
         return true; // Admin sees all
       } else {
          // Everyone else (including Country Manager) sees: Own OR Collaborator OR Escalated To Them
-         // The previous rule allowing Country Managers to see all risks for their country has been removed.
          const isOwner = r.owner === currentUser.name;
          const isCollaborator = r.collaborators.includes(currentUser.name);
          const isEscalated = (r.escalations || []).some(e => e.userId === currentUser.id);
@@ -128,7 +196,6 @@ const App = () => {
   }, [risks, currentUser]);
 
   // 2. Dashboard Risks (Filtered by UI controls)
-  // This list applies the user's current view filters (Search, Country Select, Dropdowns)
   const dashboardRisks = useMemo(() => {
     return authorizedRisks.filter(r => {
       // Country Filter
@@ -158,9 +225,15 @@ const App = () => {
     });
   }, [authorizedRisks, selectedCountry, searchQuery, filterOwner, filterRegister, filterFunction, filterStatus, filterLastReviewer, filterScore]);
 
-  // 3. List Risks (Context for the Grid)
+  // 3. Operational Risks (Dashboard Risks excluding Consolidated Groups)
+  // This is used for Main Dashboard and Risk Overview to hide consolidated parents
+  const operationalRisks = useMemo(() => {
+    return dashboardRisks.filter(r => !r.isConsolidatedGroup);
+  }, [dashboardRisks]);
+
+  // 4. List Risks (Context for the Dashboard Grid)
   const listRisks = useMemo(() => {
-    return dashboardRisks.filter(r => {
+    return operationalRisks.filter(r => {
       // Dashboard HeatMap Filter
       if (dashboardHeatMapFilter) {
         if (dashboardHeatMapFilter.type === 'inherent') {
@@ -185,14 +258,71 @@ const App = () => {
       }
       return true;
     });
-  }, [dashboardRisks, quickFilter, currentUser, dashboardHeatMapFilter]);
+  }, [operationalRisks, quickFilter, currentUser, dashboardHeatMapFilter]);
 
-  // Calculate Escalations for the DASHBOARD context
+  // 5. Consolidated Risks List (For the separate tab)
+  const consolidatedRisksList = useMemo(() => {
+     // Use dashboardRisks here because we WANT to see the consolidated ones + relevant high level risks
+     return dashboardRisks.filter(r => {
+        const isGroup = r.isConsolidatedGroup === true;
+        
+        // Check High Level criteria (CEO / Corporate)
+        const isCEO = r.owner === 'CEO' || r.collaborators.includes('CEO') || r.lastReviewer === 'CEO' || r.escalations?.some(e => e.level === EscalationLevel.CORPORATE_RISK);
+        
+        // Check Country Manager Escalation
+        const isCMEscalation = r.escalations?.some(e => e.level === EscalationLevel.COUNTRY_MANAGER);
+
+        // Check if Owner is a Country Manager
+        const ownerUser = users.find(u => u.name === r.owner);
+        const isCMOwner = ownerUser?.role === 'Country Manager';
+
+        return isGroup || isCEO || isCMEscalation || isCMOwner; 
+     });
+  }, [dashboardRisks, users]);
+
+  // 6. Filtered Consolidated Risks (For the grid in Consolidated Tab)
+  const filteredConsolidatedRisks = useMemo(() => {
+    return consolidatedRisksList.filter(r => {
+      // HeatMap Filter
+      if (consolidatedHeatMapFilter) {
+        if (consolidatedHeatMapFilter.type === 'inherent') {
+           if (r.inherentImpact !== consolidatedHeatMapFilter.impact || r.inherentLikelihood !== consolidatedHeatMapFilter.likelihood) {
+             return false;
+           }
+        } else {
+           if (r.residualImpact !== consolidatedHeatMapFilter.impact || r.residualLikelihood !== consolidatedHeatMapFilter.likelihood) {
+             return false;
+           }
+        }
+      }
+
+      // Quick Filter
+      if (consolidatedQuickFilter === 'MY_RISKS') {
+        return r.owner === currentUser.name;
+      }
+      if (consolidatedQuickFilter === 'COLLAB') {
+        return r.collaborators.includes(currentUser.name);
+      }
+      if (consolidatedQuickFilter === 'ESCALATED') {
+        return r.escalations?.some(e => e.userId === currentUser.id);
+      }
+      return true;
+    });
+  }, [consolidatedRisksList, consolidatedQuickFilter, consolidatedHeatMapFilter, currentUser]);
+
+  // Calculate Escalations for the DASHBOARD context (using operational risks only)
   const myEscalationsCount = useMemo(() => {
-    return dashboardRisks.filter(r => 
+    return operationalRisks.filter(r => 
       r.escalations?.some(e => e.userId === currentUser.id)
     ).length;
-  }, [dashboardRisks, currentUser]);
+  }, [operationalRisks, currentUser]);
+
+  // Calculate Escalations for the CONSOLIDATED context
+  const consolidatedEscalationsCount = useMemo(() => {
+    return consolidatedRisksList.filter(r => 
+      r.escalations?.some(e => e.userId === currentUser.id)
+    ).length;
+  }, [consolidatedRisksList, currentUser]);
 
   // --- Helpers for Audit Logging ---
   const addAuditLog = (riskId: string, action: string, details: string) => {
@@ -445,33 +575,25 @@ const App = () => {
     setShowResetConfirm(true);
   };
 
-  // UPDATED: Execute Reset and Snapshots current scores for Trend Analysis (History of 4 quarters)
   const executeReset = () => {
-    // Calculate current quarter string
     const now = new Date();
     const q = Math.floor((now.getMonth() + 3) / 3);
     const quarterLabel = `Q${q} ${now.getFullYear()}`;
 
     setRisks(risks.map(r => {
-      // 1. Calculate current residual score
       const currentScore = calculateRiskScore(r.residualImpact, r.residualLikelihood);
-      
-      // 2. Create snapshot object
       const snapshot: ScoreSnapshot = {
         date: now.toISOString().split('T')[0],
         score: currentScore,
         quarter: quarterLabel
       };
-
-      // 3. Manage history array (Limit to 4)
-      // Add new snapshot to the BEGINNING of array
       const newHistory = [snapshot, ...(r.historicalScores || [])].slice(0, 4);
 
       return {
         ...r,
-        status: RiskStatus.OPEN, // Reset Status
-        previousScore: currentScore, // Keep simple previousScore for immediate arrow logic
-        historicalScores: newHistory // Capture full history for dashboards
+        status: RiskStatus.OPEN,
+        previousScore: currentScore,
+        historicalScores: newHistory
       };
     }));
     setShowResetConfirm(false);
@@ -552,9 +674,14 @@ const App = () => {
     setSearchQuery('');
     setQuickFilter('ALL');
     setDashboardHeatMapFilter(null);
+    setConsolidatedQuickFilter('ALL');
+    setConsolidatedHeatMapFilter(null);
   };
 
   const hiddenColumnsCount = AVAILABLE_COLUMNS.length - visibleColumns.length;
+
+  // Access Control for New Tab
+  const canAccessConsolidated = ['RMIA', 'Country Manager', 'TEML Leadership Team', 'CEO'].includes(currentUser.role);
 
   return (
     <div className="flex flex-col h-screen bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-100 font-sans w-full max-w-full overflow-hidden transition-colors duration-200">
@@ -641,6 +768,17 @@ const App = () => {
               active={currentView === 'dashboard'} 
               onClick={() => setCurrentView('dashboard')} 
             />
+            
+            {/* New Consolidated Risks Tab */}
+            {canAccessConsolidated && (
+              <NavItem 
+                icon={<Layers size={18} />} 
+                label="Consolidated Risks" 
+                active={currentView === 'consolidated'} 
+                onClick={() => setCurrentView('consolidated')} 
+              />
+            )}
+
             <NavItem 
               icon={<Grid2x2 size={18} />} 
               label="Risk Overview" 
@@ -670,11 +808,11 @@ const App = () => {
       </header>
 
       {/* Main Content Area */}
-      <main className="flex-1 overflow-auto bg-slate-50 dark:bg-slate-950 w-full transition-colors">
+      <main className="flex-1 overflow-auto bg-slate-50 dark:bg-slate-950 w-full transition-colors relative">
         <div className="w-full px-6 py-6">
           
-          {/* Shared Filter Strip (Dashboard + Category Dashboard) - ADDED RELATIVE Z-30 */}
-          {(currentView === 'dashboard' || currentView === 'categoryDashboard') && (
+          {/* Shared Filter Strip (Dashboard + Category Dashboard + Consolidated) */}
+          {(currentView === 'dashboard' || currentView === 'categoryDashboard' || currentView === 'consolidated') && (
             <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col gap-4 mb-6 transition-colors relative z-30">
               
               {/* Top Row: Countries + Search + New Button */}
@@ -783,91 +921,22 @@ const App = () => {
 
               {/* Bottom Row: Detailed Dropdown Filters */}
               <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3 pt-4 border-t border-slate-100 dark:border-slate-800">
-                  {/* Risk Owner */}
-                  <select 
-                    value={filterOwner} 
-                    onChange={(e) => setFilterOwner(e.target.value)}
-                    className="p-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-slate-50 dark:bg-slate-800 dark:text-slate-200 focus:bg-white dark:focus:bg-slate-700 focus:ring-2 focus:ring-blue-100 outline-none"
-                  >
-                    <option value="ALL">All Risk Owners</option>
-                    {uniqueOwners.map(o => <option key={o} value={o}>{o}</option>)}
+                  {/* ... Existing dropdown filters code ... */}
+                  <select value={filterOwner} onChange={(e) => setFilterOwner(e.target.value)} className="p-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-slate-50 dark:bg-slate-800 dark:text-slate-200 outline-none"><option value="ALL">All Risk Owners</option>{uniqueOwners.map(o => <option key={o} value={o}>{o}</option>)}</select>
+                  <select value={filterRegister} onChange={(e) => setFilterRegister(e.target.value)} className="p-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-slate-50 dark:bg-slate-800 dark:text-slate-200 outline-none"><option value="ALL">All Risk Registers</option>{uniqueRegisters.map(r => <option key={r} value={r}>{r}</option>)}</select>
+                  <select value={filterFunction} onChange={(e) => setFilterFunction(e.target.value)} className="p-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-slate-50 dark:bg-slate-800 dark:text-slate-200 outline-none"><option value="ALL">All Functions</option>{uniqueFunctions.map(f => <option key={f} value={f}>{f}</option>)}</select>
+                  <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="p-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-slate-50 dark:bg-slate-800 dark:text-slate-200 outline-none"><option value="ALL">All Risk Status</option>{Object.values(RiskStatus).map(s => <option key={s} value={s}>{s}</option>)}</select>
+                  <select value={filterScore} onChange={(e) => setFilterScore(e.target.value)} className="p-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-slate-50 dark:bg-slate-800 dark:text-slate-200 outline-none"><option value="ALL">Residual Score</option>{Object.values(RiskLevel).map(l => <option key={l} value={l}>{l}</option>)}</select>
+                  <select value={filterLastReviewer} onChange={(e) => setFilterLastReviewer(e.target.value)} className="p-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-slate-50 dark:bg-slate-800 dark:text-slate-200 outline-none"><option value="ALL">Last Reviewers</option>{uniqueLastReviewers.map(r => <option key={r} value={r}>{r}</option>)}</select>
+                  
+                  <select value={sortOrder} onChange={(e) => setSortOrder(e.target.value as SortOption)} className="p-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-slate-50 dark:bg-slate-800 dark:text-slate-200 font-medium outline-none">
+                    <option value="newest">Sort: Newest First</option>
+                    <option value="oldest">Sort: Oldest First</option>
+                    <option value="highest_residual">Sort: Highest Residual</option>
+                    <option value="lowest_risk">Sort: Lowest Risk</option>
                   </select>
 
-                  {/* Risk Register */}
-                  <select 
-                    value={filterRegister} 
-                    onChange={(e) => setFilterRegister(e.target.value)}
-                    className="p-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-slate-50 dark:bg-slate-800 dark:text-slate-200 focus:bg-white dark:focus:bg-slate-700 focus:ring-2 focus:ring-blue-100 outline-none"
-                  >
-                    <option value="ALL">All Risk Registers</option>
-                    {uniqueRegisters.map(r => <option key={r} value={r}>{r}</option>)}
-                  </select>
-
-                  {/* Function/Area */}
-                  <select 
-                    value={filterFunction} 
-                    onChange={(e) => setFilterFunction(e.target.value)}
-                    className="p-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-slate-50 dark:bg-slate-800 dark:text-slate-200 focus:bg-white dark:focus:bg-slate-700 focus:ring-2 focus:ring-blue-100 outline-none"
-                  >
-                    <option value="ALL">All Functions</option>
-                    {uniqueFunctions.map(f => <option key={f} value={f}>{f}</option>)}
-                  </select>
-
-                  {/* Risk Status */}
-                  <select 
-                    value={filterStatus} 
-                    onChange={(e) => setFilterStatus(e.target.value)}
-                    className="p-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-slate-50 dark:bg-slate-800 dark:text-slate-200 focus:bg-white dark:focus:bg-slate-700 focus:ring-2 focus:ring-blue-100 outline-none"
-                  >
-                    <option value="ALL">All Risk Status</option>
-                    {Object.values(RiskStatus).map(s => <option key={s} value={s}>{s}</option>)}
-                  </select>
-
-                  {/* Residual Risk Score (Band) */}
-                  <select 
-                    value={filterScore} 
-                    onChange={(e) => setFilterScore(e.target.value)}
-                    className="p-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-slate-50 dark:bg-slate-800 dark:text-slate-200 focus:bg-white dark:focus:bg-slate-700 focus:ring-2 focus:ring-blue-100 outline-none"
-                  >
-                    <option value="ALL">Residual Score</option>
-                    {Object.values(RiskLevel).map(l => <option key={l} value={l}>{l}</option>)}
-                  </select>
-
-                   {/* Last Reviewer */}
-                   <select 
-                    value={filterLastReviewer} 
-                    onChange={(e) => setFilterLastReviewer(e.target.value)}
-                    className="p-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-slate-50 dark:bg-slate-800 dark:text-slate-200 focus:bg-white dark:focus:bg-slate-700 focus:ring-2 focus:ring-blue-100 outline-none"
-                  >
-                    <option value="ALL">Last Reviewers</option>
-                    {uniqueLastReviewers.map(r => <option key={r} value={r}>{r}</option>)}
-                  </select>
-
-                  {/* Sort Order */}
-                  <select 
-                    value={sortOrder} 
-                    onChange={(e) => setSortOrder(e.target.value as SortOption)}
-                    className="p-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-slate-50 dark:bg-slate-800 dark:text-slate-200 focus:bg-white dark:focus:bg-slate-700 focus:ring-2 focus:ring-blue-100 outline-none font-medium"
-                  >
-                    <option value="newest">Sort by: Newest First</option>
-                    <option value="oldest">Sort by: Oldest First</option>
-                    <option value="last_reviewed_newest">Sort by: Last Reviewed (Newest)</option>
-                    <option value="last_reviewed_oldest">Sort by: Last Reviewed (Oldest)</option>
-                    <option value="highest_residual">Sort by: Highest Residual Score</option>
-                    <option value="lowest_risk">Sort by: Lowest Risk Score</option>
-                    <option value="escalations">Sort by: Escalations</option>
-                    <option value="ownership">Sort by: Ownership</option>
-                    <option value="function">Sort by: Function / Department</option>
-                    <option value="last_reviewer_az">Sort by: Last Reviewer (A–Z)</option>
-                    <option value="last_reviewer_za">Sort by: Last Reviewer (Z–A)</option>
-                    <option value="newest_comments">Sort by: Newest Comments</option>
-                  </select>
-
-                  {/* Clear Button */}
-                  <button 
-                    onClick={clearFilters}
-                    className="flex items-center justify-center gap-2 text-sm font-medium text-slate-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors border border-transparent hover:border-red-100 dark:hover:border-red-900"
-                  >
+                  <button onClick={clearFilters} className="flex items-center justify-center gap-2 text-sm font-medium text-slate-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors border border-transparent hover:border-red-100 dark:hover:border-red-900">
                     <XCircle size={16} /> Clear Filters
                   </button>
               </div>
@@ -880,7 +949,7 @@ const App = () => {
             <div className="space-y-6 animate-fade-in w-full">
               {/* KPIs & Quick Filters */}
               <RiskDashboard 
-                risks={dashboardRisks} 
+                risks={operationalRisks} // Use filtered operational risks (no consolidated groups)
                 escalatedCount={myEscalationsCount}
                 currentUser={currentUser}
                 quickFilter={quickFilter}
@@ -902,7 +971,7 @@ const App = () => {
                 </button>
               </div>
 
-              {/* Risk List Table (Filtered by Quick Filter) */}
+              {/* Risk List Table with Selection Mode for Admins */}
               <RiskList 
                 risks={listRisks}
                 actions={actions}
@@ -913,15 +982,72 @@ const App = () => {
                   setIsDetailOpen(true);
                 }}
                 sortOrder={sortOrder}
-                visibleColumns={visibleColumns} // Pass columns
+                visibleColumns={visibleColumns}
+                // Selection Props for Consolidation
+                isSelectionMode={currentUser.role === 'RMIA'}
+                selectedRiskIds={selectedRiskIds}
+                onToggleSelection={handleToggleSelectRisk}
               />
             </div>
           )}
 
-          {/* CATEGORY DASHBOARD VIEW (NEW) */}
+          {/* CONSOLIDATED RISKS VIEW (NEW) */}
+          {currentView === 'consolidated' && (
+             <div className="space-y-6 animate-fade-in w-full">
+                <div className="bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
+                   <div className="flex items-center gap-4 mb-4">
+                      <div className="p-3 bg-purple-100 dark:bg-purple-900/20 rounded-xl text-purple-600 dark:text-purple-400">
+                         <Layers size={24} />
+                      </div>
+                      <div>
+                         <h2 className="text-xl font-bold text-slate-800 dark:text-white">Consolidated Risk View</h2>
+                         <p className="text-slate-500 dark:text-slate-400">Manage high-level consolidated risk groups and corporate risks.</p>
+                      </div>
+                   </div>
+                   
+                   {/* Info Banner */}
+                   <div className="bg-purple-50 dark:bg-purple-900/10 border border-purple-100 dark:border-purple-800 rounded-lg p-4 text-sm text-purple-800 dark:text-purple-300">
+                      <strong>Tip:</strong> Click on the arrow next to a Consolidated Group to view the operational risks linked to it.
+                   </div>
+                </div>
+
+                {/* Dashboard Widgets for Consolidated View */}
+                <RiskDashboard 
+                  risks={consolidatedRisksList} 
+                  escalatedCount={consolidatedEscalationsCount}
+                  currentUser={currentUser}
+                  quickFilter={consolidatedQuickFilter}
+                  onQuickFilterChange={setConsolidatedQuickFilter}
+                  activeHeatMapFilter={consolidatedHeatMapFilter}
+                  onHeatMapFilterChange={setConsolidatedHeatMapFilter}
+                />
+
+                <div className="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden">
+                   <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-800 font-bold text-slate-800 dark:text-white">
+                      Consolidated Groups & Strategic Risks
+                   </div>
+                   <RiskList 
+                      risks={filteredConsolidatedRisks} // Use filtered list
+                      actions={actions}
+                      comments={comments}
+                      currentUser={currentUser}
+                      onSelectRisk={(r) => {
+                        setSelectedRisk(r);
+                        setIsDetailOpen(true);
+                      }}
+                      sortOrder={sortOrder}
+                      visibleColumns={visibleColumns}
+                      isConsolidatedView={true} // Enable expansion logic
+                      allRisksSource={risks} // Pass full list for looking up children
+                   />
+                </div>
+             </div>
+          )}
+
+          {/* CATEGORY DASHBOARD VIEW */}
           {currentView === 'categoryDashboard' && (
              <RiskCategoryDashboard 
-               risks={dashboardRisks} // Pass filtered risks
+               risks={operationalRisks} // Use filtered operational risks
                actions={actions}
                comments={comments}
                currentUser={currentUser}
@@ -929,9 +1055,9 @@ const App = () => {
                  setSelectedRisk(r);
                  setIsDetailOpen(true);
                }}
-               visibleColumns={visibleColumns} // Pass columns
+               visibleColumns={visibleColumns} 
                onNewRisk={() => {
-                 setSelectedRisk(null); // Create new
+                 setSelectedRisk(null); 
                  setIsDetailOpen(true);
                }}
              />
@@ -940,41 +1066,28 @@ const App = () => {
           {/* REPORT VIEW */}
           {currentView === 'reports' && (
             <div className="h-[calc(100vh-140px)] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-sm p-6 flex flex-col animate-fade-in transition-colors">
+              {/* Report content placeholders... */}
               <div className="flex justify-between items-center mb-6">
                  <h2 className="text-xl font-bold text-slate-800 dark:text-white">Enterprise Risk Report</h2>
                  <button className="px-4 py-2 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-medium rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700">Export PDF</button>
               </div>
-              
               <div className="flex-1 bg-slate-100 dark:bg-slate-800 rounded-lg border-2 border-dashed border-slate-300 dark:border-slate-700 flex items-center justify-center relative overflow-hidden group">
                  <div className="text-center z-10">
                     <BarChart3 size={48} className="mx-auto text-slate-400 mb-4" />
                     <h3 className="text-lg font-semibold text-slate-600 dark:text-slate-400">PowerBI Dashboard Integration</h3>
-                    <p className="text-slate-500 dark:text-slate-500 max-w-md mx-auto mt-2">This placeholder represents the embedded PowerBI Report. In a production environment, the iframe would load here.</p>
-                 </div>
-                 {/* Decorative background pattern to look like a chart */}
-                 <div className="absolute inset-0 opacity-5 pointer-events-none">
-                    <svg width="100%" height="100%">
-                        <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
-                           <path d="M 40 0 L 0 0 0 40" fill="none" stroke="currentColor" strokeWidth="1"/>
-                        </pattern>
-                        <rect width="100%" height="100%" fill="url(#grid)" />
-                    </svg>
                  </div>
               </div>
             </div>
           )}
 
-          {/* HELP / USER GUIDE VIEW */}
-          {currentView === 'help' && (
-             <UserGuide />
-          )}
+          {/* HELP VIEW */}
+          {currentView === 'help' && <UserGuide />}
 
           {/* ADMIN VIEW */}
           {currentView === 'admin' && (
             <div className="space-y-6 animate-fade-in">
-              
-              {/* Risk Review Cycle Control */}
               <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-sm p-6 transition-colors">
+                {/* Admin Controls... */}
                 <div className="flex justify-between items-start">
                   <div>
                     <h2 className="text-xl font-bold text-slate-800 dark:text-white mb-2 flex items-center gap-2">
@@ -982,33 +1095,17 @@ const App = () => {
                        Risk Review Cycle
                     </h2>
                     <p className="text-slate-500 dark:text-slate-400 max-w-2xl">
-                       Initiate a new risk review cycle. This action will reset the status of <strong>ALL risks</strong> in the database to <span className="font-bold text-blue-600 dark:text-blue-400">Open</span>. 
-                       <br/>
-                       <span className="text-orange-600 dark:text-orange-400 font-bold">New:</span> This also takes a snapshot of all current scores to establish a new baseline for Trend Analysis.
+                       Initiate a new risk review cycle.
                     </p>
                   </div>
-                  <div className="p-4 bg-orange-50 dark:bg-orange-900/20 rounded-lg border border-orange-100 dark:border-orange-800 flex gap-4 items-start max-w-md">
-                     <AlertCircle className="text-orange-600 dark:text-orange-400 flex-shrink-0" size={20} />
-                     <div className="space-y-3">
-                        <p className="text-xs text-orange-800 dark:text-orange-300 font-medium">Warning: This action affects the entire organization and cannot be undone.</p>
-                        {currentUser.role === 'RMIA' ? (
-                          <button 
-                             onClick={handleResetRiskStatus}
-                             className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white text-sm font-bold rounded-lg shadow-sm transition-colors w-full"
-                          >
-                             Start New Review Cycle (Reset All Risks)
-                          </button>
-                        ) : (
-                          <div className="text-xs text-slate-500 italic bg-white dark:bg-slate-800 px-3 py-2 rounded border border-slate-200 dark:border-slate-700">
-                             Only Admins can perform this action.
-                          </div>
-                        )}
-                     </div>
-                  </div>
+                  {currentUser.role === 'RMIA' && (
+                    <button onClick={handleResetRiskStatus} className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white text-sm font-bold rounded-lg shadow-sm transition-colors">
+                       Start New Review Cycle
+                    </button>
+                  )}
                 </div>
               </div>
 
-               {/* Bulk Actions for Admins */}
                {currentUser.role === 'RMIA' && (
                   <AdminBulkActions 
                     users={users}
@@ -1018,19 +1115,109 @@ const App = () => {
                     onBulkAddCollaborator={handleBulkAddCollaborator}
                   />
                )}
-
-              {/* User Management */}
-              <UserManagement 
-                users={users}
-                onAddUser={handleAddUser}
-                onUpdateUser={handleUpdateUser}
-                onDeleteUser={handleDeleteUser}
-              />
+              <UserManagement users={users} onAddUser={handleAddUser} onUpdateUser={handleUpdateUser} onDeleteUser={handleDeleteUser} />
             </div>
           )}
 
         </div>
       </main>
+
+      {/* Floating Action Bar for Consolidation (Admin Only) */}
+      {selectedRiskIds.size > 0 && currentView === 'dashboard' && currentUser.role === 'RMIA' && (
+        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 animate-fade-in transition-all">
+          <div className="bg-[#1e293b] text-white p-2 pr-3 rounded-2xl shadow-2xl flex items-center gap-3 border border-slate-700">
+            {/* Counter Badge */}
+            <div className="bg-blue-600 w-9 h-9 rounded-xl flex items-center justify-center font-bold text-sm shadow-inner text-white">
+              {selectedRiskIds.size}
+            </div>
+            
+            {/* Text Context */}
+            <div className="flex flex-col mr-2">
+              <span className="text-sm font-bold leading-none text-white">Selected</span>
+              <span className="text-[10px] text-slate-400 leading-none mt-1 font-medium uppercase tracking-wide">For Consolidation</span>
+            </div>
+            
+            <div className="h-8 w-px bg-slate-700 mx-1"></div>
+
+            {/* Primary Action */}
+            <button 
+              onClick={() => {
+                  setNewConsolidatedOwner(currentUser.name);
+                  setShowConsolidateModal(true);
+              }}
+              className="flex items-center gap-2 px-4 py-2 bg-white text-slate-900 rounded-lg hover:bg-blue-50 transition-colors font-bold text-sm shadow-sm"
+            >
+              <Layers size={16} className="text-blue-600" /> 
+              Consolidate
+            </button>
+            
+            {/* Clear Action */}
+            <button 
+              onClick={() => setSelectedRiskIds(new Set())}
+              className="flex items-center gap-1.5 px-3 py-2 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white transition-colors text-xs font-medium ml-1"
+            >
+              <X size={14} />
+              Clear
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Consolidation Modal */}
+      {showConsolidateModal && (
+         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-fade-in">
+            <div className="bg-white dark:bg-slate-900 rounded-xl shadow-2xl p-8 max-w-2xl w-full border-t-4 border-purple-500">
+               <h3 className="text-2xl font-bold text-slate-800 dark:text-white mb-2">Create Consolidated Risk</h3>
+               <p className="text-slate-600 dark:text-slate-300 mb-6">
+                  You are grouping <strong>{selectedRiskIds.size}</strong> risks into a new Parent Risk.
+               </p>
+               
+               <div className="space-y-4 mb-8">
+                  <div>
+                    <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Group Title <span className="text-red-500">*</span></label>
+                    <input 
+                        autoFocus
+                        type="text" 
+                        placeholder="e.g. Regional Security Overview - Brazil"
+                        value={newConsolidatedTitle}
+                        onChange={(e) => setNewConsolidatedTitle(e.target.value)}
+                        className="w-full px-4 py-3 border border-slate-300 dark:border-slate-600 rounded-lg bg-slate-50 dark:bg-slate-800 dark:text-white focus:ring-2 focus:ring-purple-500 outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Assign Owner <span className="text-red-500">*</span></label>
+                    <div className="relative">
+                        <UserIcon className="absolute left-3 top-3 text-slate-400" size={18} />
+                        <select
+                            value={newConsolidatedOwner}
+                            onChange={(e) => setNewConsolidatedOwner(e.target.value)}
+                            className="w-full pl-10 pr-4 py-3 border border-slate-300 dark:border-slate-600 rounded-lg bg-slate-50 dark:bg-slate-800 dark:text-white focus:ring-2 focus:ring-purple-500 outline-none appearance-none"
+                        >
+                            {users.map(u => (
+                                <option key={u.id} value={u.name}>{u.name} ({u.role})</option>
+                            ))}
+                        </select>
+                        <div className="absolute right-3 top-3 pointer-events-none text-slate-400">
+                             <ChevronDown size={18} /> 
+                        </div>
+                    </div>
+                  </div>
+               </div>
+
+               <div className="flex gap-4">
+                  <button onClick={() => setShowConsolidateModal(false)} className="flex-1 px-4 py-3 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 font-bold rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors">Cancel</button>
+                  <button 
+                     onClick={handleConsolidateRisks}
+                     disabled={!newConsolidatedTitle.trim() || !newConsolidatedOwner}
+                     className="flex-1 px-4 py-3 bg-purple-600 text-white font-bold rounded-lg hover:bg-purple-700 disabled:opacity-50 shadow-md transition-colors"
+                  >
+                     Confirm Consolidation
+                  </button>
+               </div>
+            </div>
+         </div>
+      )}
 
       {/* Detail Modal */}
       {isDetailOpen && (
@@ -1038,6 +1225,8 @@ const App = () => {
           risk={selectedRisk} 
           currentUser={currentUser}
           users={users}
+          // Pass full risks list for searching child risks in consolidated view
+          allRisks={risks}
           onClose={() => setIsDetailOpen(false)}
           onSave={handleSaveRisk}
           onDelete={handleDeleteRisk}

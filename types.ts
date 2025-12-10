@@ -1,4 +1,5 @@
 
+
 export enum Country {
   UK = 'UK',
   BR = 'BR',
@@ -163,6 +164,10 @@ export interface Risk {
   
   // Escalation
   escalations?: EscalationEntry[];
+
+  // Consolidated Risks (New)
+  isConsolidatedGroup?: boolean;
+  childRiskIds?: string[];
 }
 
 // Helper types for charts

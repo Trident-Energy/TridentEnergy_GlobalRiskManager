@@ -19,8 +19,8 @@ export const GROUPS = [
 export const ESCALATION_LEVELS = [
   EscalationLevel.FUNCTIONAL_MANAGER,
   EscalationLevel.TEML_FUNCTIONAL_REVIEW,
-  EscalationLevel.COUNTRY_MANAGER, // Moved before Leadership based on hierarchy
   EscalationLevel.TEML_LEADERSHIP,
+  EscalationLevel.COUNTRY_MANAGER,
   EscalationLevel.CORPORATE_RISK
 ];
 
@@ -97,7 +97,7 @@ export const RISK_REGISTER_DATA = [
   { register: "BR Country", functionArea: "Strategic and Entity Level risks (e.g. M&A)" },
   { register: "EG Country", functionArea: "Strategic and Entity Level risks (e.g. M&A)" },
   { register: "Supply Chain", functionArea: "Supply Chain" },
-  { register: "Comms", functionArea: "HR" },
+  { register: "Comms", functionArea: "Strategic and Entity Level risks (e.g. M&A)" },
   { register: "HR", functionArea: "HR" },
   { register: "IT", functionArea: "IT" },
   { register: "COO", functionArea: "Operations and Integrity" },
@@ -108,24 +108,25 @@ export const RISK_REGISTER_DATA = [
   { register: "CTO", functionArea: "Projects" },
   { register: "Well decommissioning", functionArea: "Projects" },
   { register: "HSE", functionArea: "HSE" },
-  { register: "Government relations", functionArea: "HSE" },
+  { register: "Government relations", functionArea: "Strategic and Entity Level risks (e.g. M&A)" },
   { register: "Legal", functionArea: "Compliance" },
   { register: "CFO", functionArea: "Finance and Liquidity" },
   { register: "Finance", functionArea: "Finance and Liquidity" },
   { register: "Treasury", functionArea: "Finance and Liquidity" },
   { register: "Tax", functionArea: "Finance and Liquidity" },
-  { register: "Integrity Brazil - Flag and Class including walkway", functionArea: "Operations and Integrity" },
+  { register: "Integrity Brazil - Flag and Class including walkways Risk Register", functionArea: "Operations and Integrity" },
   { register: "Integrity Brazil - General Maintenance Risk Register", functionArea: "Operations and Integrity" },
   { register: "Integrity Brazil - SGIP (Well Integrity) Risk Register", functionArea: "Operations and Integrity" },
   { register: "Integrity Brazil - SGSO Risk Register", functionArea: "Operations and Integrity" },
   { register: "Integrity Brazil - SGSS ( Subsea & pipeline integrity) Risk Register", functionArea: "Operations and Integrity" },
-  { register: "Integrity EG - General Maintenance, SCE, Walkways", functionArea: "Operations and Integrity" },
-  { register: "Integrity EG - Subsea structures & Rotative equipment", functionArea: "Operations and Integrity" },
-  { register: "Integrity EG - Top side, pipeline and Marine Structures", functionArea: "Operations and Integrity" },
+  { register: "Integrity EG - General Maintenance, SCE, Walkways, Accommodation Ceiba Risk Register", functionArea: "Operations and Integrity" },
+  { register: "Integrity EG - General Maintenance, SCE, Walkways, Accommodation Okume Risk Register", functionArea: "Operations and Integrity" },
+  { register: "Integrity EG - Subsea structures & Rotative equipment Risk Register", functionArea: "Operations and Integrity" },
+  { register: "Integrity EG - Top side, pipeline and Marine Structural Risk Register", functionArea: "Operations and Integrity" },
   { register: "Integrity EG - Well integrity Risk Register", functionArea: "Operations and Integrity" },
   { register: "EG Drilling Campaign (Project)", functionArea: "Projects" },
   { register: "Foxtrot Compression Project", functionArea: "Projects" },
-  { register: "Integrity EG – General Maintenance, SCE, Walkways", functionArea: "Operations and Integrity" },
+  { register: "Integrity EG – General Maintenance, SCE, Walkways, Accommodation Risk Register", functionArea: "Operations and Integrity" },
   { register: "Environmental, Social, and Governance (ESG)", functionArea: "HSE" },
   { register: "Subsea decommissioning", functionArea: "Projects" },
   { register: "BRAVO FSO Project", functionArea: "Projects" },
@@ -133,15 +134,11 @@ export const RISK_REGISTER_DATA = [
   { register: "CG Country", functionArea: "Strategic and Entity Level risks (e.g. M&A)" },
   { register: "CG Deputy country", functionArea: "Strategic and Entity Level risks (e.g. M&A)" },
   { register: "TEdB Topside Projects", functionArea: "Operations and Integrity" },
-  { register: "Well Services", functionArea: "Projects" },
+  { register: "Well Services", functionArea: "Operations and Integrity" },
   { register: "CG Integrity", functionArea: "Operations and Integrity" },
   { register: "P-65 Decommissioning", functionArea: "Projects" },
   { register: "FLNG", functionArea: "Projects" },
-  { register: "BR Asset", functionArea: "Operations and Integrity" },
-  
-  // Fallbacks for existing mock data if needed
-  { register: "UK Corporate", functionArea: "Strategic and Entity Level risks (e.g. M&A)" },
-  { register: "Corporate", functionArea: "Strategic and Entity Level risks (e.g. M&A)" }
+  { register: "BR Asset", functionArea: "Operations and Integrity" }
 ].sort((a, b) => a.register.localeCompare(b.register));
 
 

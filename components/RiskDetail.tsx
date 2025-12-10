@@ -4,12 +4,13 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Risk, ActionPlan, Comment, RiskStatus, ControlRating, RiskCategory, Country, User, AuditLogEntry, Attachment, EscalationLevel, EscalationEntry, UserRole, RiskControl } from '../types';
 import { calculateRiskScore, getRiskLevel, COUNTRIES, IMPACT_OPTIONS, LIKELIHOOD_OPTIONS, PRINCIPAL_RISKS_MAPPING, RISK_REGISTER_DATA, ESCALATION_LEVELS, getRatingValue, getRatingFromValue } from '../constants';
 import { generateMitigationAdvice, improveRiskDescription } from '../services/geminiService';
-import { X, Save, MessageSquare, Plus, Sparkles, Calendar, ChevronDown, Trash2, Search, AlertTriangle, Send, CornerDownRight, Edit2, Clock, User as UserIcon, Paperclip, FileText, Download, ShieldAlert, Shield, Activity, ThumbsUp, Star, TrendingUp, Target, AlertCircle, ArrowDown, Lightbulb, Info } from 'lucide-react';
+import { X, Save, MessageSquare, Plus, Sparkles, Calendar, ChevronDown, Trash2, Search, AlertTriangle, Send, CornerDownRight, Edit2, Clock, User as UserIcon, Paperclip, FileText, Download, ShieldAlert, Shield, Activity, ThumbsUp, Star, TrendingUp, Target, AlertCircle, ArrowDown, Lightbulb, Info, Layers, Link2, MinusCircle, Globe, Briefcase, Tag } from 'lucide-react';
 
 interface Props {
   risk: Risk | null; // null means 'New Risk'
   currentUser: User;
   users: User[];
+  allRisks?: Risk[]; // For searching children in consolidated view
   onClose: () => void;
   onSave: (risk: Risk) => void;
   onDelete: (riskId: string) => void;
@@ -23,6 +24,7 @@ interface Props {
   onLikeComment: (commentId: string) => void;
 }
 
+// ... (Keep existing definitions: IMPACT_DEFINITIONS, LIKELIHOOD_DEFINITIONS, STAR_TOOLTIPS, StarRating, GuidanceTooltip, CommentItem)
 // Definitions for inline help
 const IMPACT_DEFINITIONS: Record<number, string> = {
   1: "Minimal financial impact (<$10k) or minor injury.",
@@ -307,7 +309,23 @@ const CommentItem: React.FC<CommentItemProps> = ({
   );
 };
 
-const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave, onDelete, actions, onAddAction, onUpdateAction, onDeleteAction, comments, onAddComment, onDeleteComment, onLikeComment }) => {
+const RiskDetail: React.FC<Props> = ({ 
+  risk, 
+  currentUser, 
+  users, 
+  allRisks = [], 
+  onClose, 
+  onSave, 
+  onDelete, 
+  actions, 
+  onAddAction, 
+  onUpdateAction, 
+  onDeleteAction, 
+  comments, 
+  onAddComment, 
+  onDeleteComment, 
+  onLikeComment 
+}) => {
   
   // Helper to generate unique ID based on country
   const generateNewId = (countryCode: string) => {
@@ -316,7 +334,6 @@ const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave
   };
 
   // Local state for the form
-  // Initialized properly with passed risk or defaults to ensure data persistence
   const [formData, setFormData] = useState<Risk>(() => {
     if (risk) {
       // BACKWARD COMPATIBILITY: Convert old controlsText to new controls array if empty
@@ -364,13 +381,12 @@ const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave
 
   const [aiLoading, setAiLoading] = useState(false);
   const [aiDescriptionLoading, setAiDescriptionLoading] = useState(false);
-  // Updated state to hold object with feedback
   const [aiDescriptionSuggestion, setAiDescriptionSuggestion] = useState<{text: string, feedback: string} | null>(null);
   const [aiControlsSuggestion, setAiControlsSuggestion] = useState<{text: string, feedback: string} | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
   
   const [newComment, setNewComment] = useState('');
-  const [activeTab, setActiveTab] = useState<'details' | 'actions' | 'comments' | 'escalation' | 'history'>('details');
+  const [activeTab, setActiveTab] = useState<'details' | 'actions' | 'comments' | 'escalation' | 'history' | 'linked_risks'>('details');
   const [countryOpen, setCountryOpen] = useState(false);
   const countryRef = useRef<HTMLDivElement>(null);
   
@@ -392,10 +408,15 @@ const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave
   const [escalationSearch, setEscalationSearch] = useState('');
   const [activeEscalationLevel, setActiveEscalationLevel] = useState<EscalationLevel | null>(null);
 
+  // Linked Risks State (Consolidated Groups only)
+  const [riskSearchQuery, setRiskSearchQuery] = useState('');
+  const [showRiskSearch, setShowRiskSearch] = useState(false);
+
   // Permission Logic
   const isNewRisk = !risk;
   const isOwner = risk ? risk.owner === currentUser.name : true; // Creator is owner
   const isAdmin = currentUser.role === 'RMIA';
+  const isConsolidatedGroup = formData.isConsolidatedGroup === true;
   
   const canEdit = isNewRisk || isAdmin || isOwner;
   const canDelete = isAdmin; // STRICT: Only Admins (RMIA) can delete risks
@@ -429,28 +450,23 @@ const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Initialize form if editing - Handle external updates (like history or status changes from list view)
+  // Initialize form if editing
   useEffect(() => {
     if (risk) {
       setFormData(prev => {
-        // If the risk ID changed (different risk selected), strictly replace.
         if (prev.id !== risk.id) {
-           // Ensure controls array exists
            const existingControls = risk.controls && risk.controls.length > 0 
            ? risk.controls 
            : (risk.controlsText ? [{ id: 'ctrl-init', description: risk.controlsText, rating: risk.controlsRating }] : []);
 
            return { ...risk, controls: existingControls };
         }
-        
-        // Otherwise, we are likely receiving an update to the SAME risk (e.g. history update from side effect).
-        // We want to keep current form values for fields the user is editing, but update history.
         return {
           ...prev,
-          history: risk.history, // Always take latest history
+          history: risk.history, 
         };
       });
-      setUserManuallySetRating(false); // Reset on new risk load
+      setUserManuallySetRating(false);
     }
   }, [risk]);
 
@@ -470,6 +486,7 @@ const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave
 
   }, [formData.controls]);
 
+  // ... (Keep existing handlers: handleInputChange, handleRegisterChange, etc.)
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     
@@ -548,8 +565,6 @@ const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave
     setFormData(prev => ({ ...prev, collaborators: prev.collaborators.filter(c => c !== name) }));
   };
 
-  // --- Control Management Handlers ---
-
   const handleAddControl = () => {
     const newControl: RiskControl = {
       id: `ctrl-${Date.now()}`,
@@ -579,6 +594,25 @@ const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave
     if (field === 'rating') {
       setUserManuallySetRating(false); // Recalculate average on rating change
     }
+  };
+
+  // --- Linked Risks Logic (Consolidated Group) ---
+  const handleLinkRisk = (riskId: string) => {
+     if (!formData.childRiskIds?.includes(riskId)) {
+        setFormData(prev => ({
+           ...prev,
+           childRiskIds: [...(prev.childRiskIds || []), riskId]
+        }));
+     }
+     setShowRiskSearch(false);
+     setRiskSearchQuery('');
+  };
+
+  const handleUnlinkRisk = (riskId: string) => {
+     setFormData(prev => ({
+        ...prev,
+        childRiskIds: (prev.childRiskIds || []).filter(id => id !== riskId)
+     }));
   };
 
   // --- Escalation Logic with Checkbox & Admin Overrides ---
@@ -884,19 +918,15 @@ const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave
   const residualScore = calculateRiskScore(formData.residualImpact, formData.residualLikelihood);
   const residualLevel = getRiskLevel(residualScore, formData.residualImpact);
 
-  // Dynamic Validation Check for Scoring (Residual > Inherent)
   const isScoringInvalid = residualScore > inherentScore;
-
   const selectedCountry = COUNTRIES.find(c => c.code === formData.country);
 
-  // Filter Function/Area options based on selected Register
   const currentMapping = RISK_REGISTER_DATA.find(r => r.register === formData.register);
   const availableFunctions = currentMapping ? [currentMapping.functionArea] : [];
   if (formData.functionArea && !availableFunctions.includes(formData.functionArea)) {
       availableFunctions.push(formData.functionArea);
   }
 
-  // Available users to add as collaborators
   const availableCollaborators = users.filter(u => u.name !== formData.owner && !formData.collaborators.includes(u.name));
   const filteredCollaboratorOptions = availableCollaborators.filter(u => 
     u.name.toLowerCase().includes(collaboratorSearch.toLowerCase()) || 
@@ -911,6 +941,11 @@ const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave
         <div className="px-8 py-5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-white dark:bg-slate-900 shrink-0">
           <div>
             <div className="flex items-center gap-3 mb-1">
+               {isConsolidatedGroup && (
+                  <span className="flex items-center gap-1 text-xs font-bold text-white bg-purple-600 px-2 py-0.5 rounded">
+                     <Layers size={12} /> Consolidated Group
+                  </span>
+               )}
               <span className="text-xs font-mono font-bold text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded">{formData.id}</span>
               <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${residualLevel.color}`}>
                 Current Risk: {residualLevel.label} ({residualScore})
@@ -931,7 +966,6 @@ const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave
                 </div>
              )}
 
-             {/* STRICT CHECK: ONLY RMIA CAN DELETE RISKS */}
              {canDelete && (
                 <button 
                   onClick={() => setShowDeleteConfirm(true)}
@@ -962,18 +996,24 @@ const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave
             { id: 'actions', label: 'Action Plan' },
             { id: 'comments', label: 'Comment' },
             { id: 'escalation', label: 'Escalation' },
-            { id: 'history', label: 'Audit Trail' }
+            { id: 'history', label: 'Audit Trail' },
+            ...(isConsolidatedGroup ? [{ id: 'linked_risks', label: 'Linked Risks' }] : [])
           ].map(tab => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id as any)}
-              className={`px-6 py-4 text-sm font-bold border-b-2 transition-colors whitespace-nowrap ${
+              className={`px-6 py-4 text-sm font-bold border-b-2 transition-colors whitespace-nowrap flex items-center gap-2 ${
                 activeTab === tab.id 
                   ? 'border-blue-600 text-blue-600 dark:border-blue-400 dark:text-blue-400' 
                   : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
               }`}
             >
               {tab.label}
+              {tab.id === 'linked_risks' && (
+                 <span className="bg-purple-100 dark:bg-purple-900 text-purple-700 dark:text-purple-300 px-2 py-0.5 rounded-full text-xs">
+                    {formData.childRiskIds?.length || 0}
+                 </span>
+              )}
             </button>
           ))}
         </div>
@@ -985,6 +1025,7 @@ const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave
             <div className="space-y-8 animate-fade-in max-w-7xl mx-auto">
                {/* SECTION 1: IDENTIFICATION */}
                <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
+                  {/* ... (Keep existing identification section contents exactly same) ... */}
                   <div className="px-6 py-3 bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 flex items-center gap-2 rounded-t-xl">
                      <FileText size={18} className="text-blue-600 dark:text-blue-400" />
                      <h3 className="font-bold text-slate-800 dark:text-slate-200 text-sm tracking-wide">1. Risk Identification</h3>
@@ -1006,7 +1047,7 @@ const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave
                         placeholder="E.g. Supply Chain Failure"
                       />
                     </div>
-
+                    {/* ... Rest of form fields (Country, Register, Owner, FunctionArea, Category, Principal Risk) ... */}
                     {/* Meta Grid */}
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                        {/* Country */}
@@ -1041,8 +1082,7 @@ const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave
                              )}
                           </div>
                        </div>
-
-                       {/* Risk Owner */}
+                       {/* Owner */}
                        <div>
                           <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Risk Owner</label>
                           <div className="relative">
@@ -1074,8 +1114,7 @@ const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave
                              )}
                           </div>
                        </div>
-
-                       {/* Risk Register */}
+                       {/* Register */}
                        <div>
                          <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Risk Register</label>
                          <select 
@@ -1090,7 +1129,6 @@ const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave
                             ))}
                          </select>
                        </div>
-
                        {/* Function/Area */}
                        <div>
                           <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Function/Area</label>
@@ -1104,8 +1142,7 @@ const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave
                              {availableFunctions.map((f) => <option key={f} value={f}>{f}</option>)}
                           </select>
                        </div>
-
-                       {/* Risk Category */}
+                       {/* Category */}
                        <div>
                           <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Risk Category</label>
                           <select 
@@ -1118,7 +1155,6 @@ const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave
                              {Object.values(RiskCategory).map((c) => <option key={c} value={c}>{c}</option>)}
                           </select>
                        </div>
-
                        {/* Principal Risk */}
                        <div>
                           <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Principal Risk</label>
@@ -1188,12 +1224,12 @@ const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave
                   </div>
                </div>
 
-               {/* SCORING FLOW SECTION */}
+               {/* SCORING FLOW SECTION (KEEP EXACTLY SAME) */}
                <div className="space-y-6">
+                  {/* ... (Keep Risk Assessment & Mitigation sections) ... */}
                   <div className="flex items-center gap-2 text-slate-400 font-bold text-xs tracking-wider px-2">
                      <Shield size={14} /> Risk Assessment & Mitigation
                   </div>
-
                   {/* Step 1: Inherent Risk */}
                   <div className="bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-200 dark:border-slate-700 relative">
                      <div className="absolute top-0 left-0 w-1 h-full bg-slate-400 rounded-l-xl"></div>
@@ -1440,7 +1476,7 @@ const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave
                            </div>
                         </div>
 
-                         {/* HISTORICAL SCORE VISUALIZATION - MOVED TO RESIDUAL */}
+                         {/* HISTORICAL SCORE VISUALIZATION */}
                          {formData.historicalScores && formData.historicalScores.length > 0 && (
                            <div className="mt-6 pt-4 border-t border-slate-200 dark:border-slate-700">
                              <h5 className="flex items-center gap-2 text-xs font-bold text-slate-500 mb-3">
@@ -1448,8 +1484,6 @@ const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave
                              </h5>
                              <div className="flex items-center gap-3 overflow-x-auto pb-2">
                                {formData.historicalScores.map((snapshot, index) => {
-                                 // Simple logic to color code the historical badges
-                                 // We need real impact to get accurate color, but assuming score > 15 is high is enough for small badge.
                                  let colorClass = 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300';
                                  if (snapshot.score >= 15) colorClass = 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300';
                                  else if (snapshot.score >= 5) colorClass = 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300';
@@ -1565,6 +1599,173 @@ const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave
             </div>
           )}
           
+          {/* Linked Risks Tab (Consolidated Groups Only) */}
+          {activeTab === 'linked_risks' && isConsolidatedGroup && (
+             <div className="space-y-6 animate-fade-in max-w-7xl mx-auto">
+                <div className="flex justify-between items-center">
+                   <h3 className="text-lg font-bold text-slate-800 dark:text-white flex items-center gap-2">
+                     <Layers className="text-purple-600" /> Linked Child Risks
+                   </h3>
+                   {isAdmin && (
+                     <button 
+                        onClick={() => setShowRiskSearch(!showRiskSearch)}
+                        className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 font-medium shadow-sm transition-colors"
+                     >
+                        <Link2 size={18} /> Link Existing Risk
+                     </button>
+                   )}
+                </div>
+
+                {/* Risk Search for Linking */}
+                {showRiskSearch && isAdmin && (
+                   <div className="bg-slate-50 dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 mb-4 animate-fade-in">
+                      <h4 className="font-bold text-slate-700 dark:text-slate-300 mb-2 text-sm">Search Risks to Link</h4>
+                      <div className="relative">
+                         <Search className="absolute left-3 top-2.5 text-slate-400" size={16} />
+                         <input 
+                           type="text" 
+                           placeholder="Search by Title or ID..."
+                           value={riskSearchQuery}
+                           onChange={(e) => setRiskSearchQuery(e.target.value)}
+                           className="w-full pl-10 pr-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-purple-500 bg-white dark:bg-slate-900 dark:text-white"
+                         />
+                         {riskSearchQuery && (
+                            <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg shadow-xl z-20 max-h-60 overflow-y-auto">
+                               {allRisks
+                                 .filter(r => 
+                                    (r.title.toLowerCase().includes(riskSearchQuery.toLowerCase()) || r.id.toLowerCase().includes(riskSearchQuery.toLowerCase())) &&
+                                    !formData.childRiskIds?.includes(r.id) && 
+                                    r.id !== formData.id // Prevent self-linking
+                                 )
+                                 .map(r => (
+                                    <button 
+                                       key={r.id}
+                                       onClick={() => handleLinkRisk(r.id)}
+                                       className="w-full text-left px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-800 border-b border-slate-100 dark:border-slate-800 last:border-0"
+                                    >
+                                       <div className="font-bold text-sm text-slate-800 dark:text-slate-200">{r.title}</div>
+                                       <div className="text-xs text-slate-500 flex gap-2">
+                                          <span className="font-mono">{r.id}</span>
+                                          <span>• {r.owner}</span>
+                                       </div>
+                                    </button>
+                                 ))}
+                                 {allRisks.filter(r => (r.title.toLowerCase().includes(riskSearchQuery.toLowerCase()) || r.id.toLowerCase().includes(riskSearchQuery.toLowerCase())) && !formData.childRiskIds?.includes(r.id) && r.id !== formData.id).length === 0 && (
+                                    <div className="p-4 text-center text-slate-500 text-sm">No matching risks found.</div>
+                                 )}
+                            </div>
+                         )}
+                      </div>
+                   </div>
+                )}
+
+                {/* List of Linked Risks (Enhanced) */}
+                <div className="space-y-3">
+                   {(!formData.childRiskIds || formData.childRiskIds.length === 0) ? (
+                      <div className="text-center py-12 text-slate-400 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-dashed border-slate-300 dark:border-slate-700">
+                         <Layers size={32} className="mx-auto mb-2 opacity-50" />
+                         <p>No risks linked to this group yet.</p>
+                      </div>
+                   ) : (
+                      formData.childRiskIds.map(childId => {
+                         const childRisk = allRisks.find(r => r.id === childId);
+                         if (!childRisk) return null; // Handle deleted risks gracefully
+
+                         const score = calculateRiskScore(childRisk.residualImpact, childRisk.residualLikelihood);
+                         const level = getRiskLevel(score, childRisk.residualImpact);
+                         const countryConfig = COUNTRIES.find(c => c.code === childRisk.country);
+                         const ownerUser = users.find(u => u.name === childRisk.owner);
+
+                         return (
+                            <div key={childId} className="relative bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm hover:shadow-md transition-shadow p-4 overflow-hidden group">
+                                 {/* Colored Side Bar based on Risk Level */}
+                                 <div className={`absolute left-0 top-0 bottom-0 w-1.5 ${level.color.split(' ')[0]}`}></div>
+                                 
+                                 <div className="pl-3 flex flex-col gap-3">
+                                    {/* Header: ID, Title, Status */}
+                                    <div className="flex justify-between items-start">
+                                       <div className="flex items-center gap-2">
+                                          <span className="font-mono text-xs font-bold bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 rounded text-slate-600 dark:text-slate-300">
+                                             {childRisk.id}
+                                          </span>
+                                          <h4 className="font-bold text-slate-800 dark:text-white text-sm">{childRisk.title}</h4>
+                                       </div>
+                                       <div className="flex items-center gap-3">
+                                           {/* Score Badge (Now in Header) */}
+                                           <div className="flex items-center gap-1.5">
+                                              <span className={`px-2 py-0.5 rounded-full text-white font-bold text-[10px] shadow-sm ${level.color}`}>
+                                                 {level.label} ({score})
+                                              </span>
+                                           </div>
+
+                                           <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                                              childRisk.status === 'Open' ? 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-900/30 dark:border-blue-800 dark:text-blue-300' :
+                                              childRisk.status === 'Reviewed' ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:border-emerald-800 dark:text-emerald-300' :
+                                              'bg-slate-50 text-slate-600 border-slate-200 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-400'
+                                           }`}>
+                                              {childRisk.status}
+                                           </span>
+                                           {isAdmin && (
+                                              <button 
+                                                 onClick={() => handleUnlinkRisk(childId)}
+                                                 className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+                                                 title="Unlink Risk"
+                                              >
+                                                 <MinusCircle size={16} />
+                                              </button>
+                                           )}
+                                       </div>
+                                    </div>
+
+                                    {/* Details Grid (Expanded Information) */}
+                                    <div className="mt-1 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-y-3 gap-x-6 text-xs text-slate-500 dark:text-slate-400 border-t border-slate-50 dark:border-slate-800 pt-3">
+                                        
+                                        {/* Col 1: Context */}
+                                        <div className="space-y-1.5">
+                                            <div className="flex items-center gap-2">
+                                                {countryConfig ? <img src={countryConfig.flagUrl} alt="" className="w-4 h-4 rounded-full object-cover shadow-sm" /> : <Globe size={14} />}
+                                                <span className="font-medium text-slate-700 dark:text-slate-200">{countryConfig?.label || childRisk.country}</span>
+                                            </div>
+                                             <div className="flex items-center gap-2" title="Risk Register">
+                                                <Layers size={14} className="text-slate-400" />
+                                                <span>Register: <span className="font-medium text-slate-600 dark:text-slate-300">{childRisk.register}</span></span>
+                                            </div>
+                                        </div>
+
+                                        {/* Col 2: Classification */}
+                                        <div className="space-y-1.5">
+                                            <div className="flex items-center gap-2" title="Function/Area">
+                                                 <Briefcase size={14} className="text-slate-400" />
+                                                 <span className="truncate">Function: <span className="font-medium text-slate-600 dark:text-slate-300">{childRisk.functionArea}</span></span>
+                                            </div>
+                                             <div className="flex items-center gap-2" title="Category">
+                                                 <Tag size={14} className="text-slate-400" />
+                                                 <span>Category: <span className="font-medium text-slate-600 dark:text-slate-300">{childRisk.category}</span></span>
+                                            </div>
+                                        </div>
+
+                                        {/* Col 3: People */}
+                                         <div className="space-y-1.5">
+                                            <div className="flex items-center gap-2">
+                                               <UserIcon size={14} className="text-slate-400" />
+                                               <span>Owner: <span className="font-medium text-slate-700 dark:text-slate-200">{childRisk.owner}</span></span>
+                                            </div>
+                                             {ownerUser && (
+                                                <div className="pl-6">
+                                                    <span className="px-1.5 py-0.5 bg-slate-100 dark:bg-slate-700 rounded text-[10px] uppercase font-bold tracking-wider text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-600">{ownerUser.role}</span>
+                                                </div>
+                                             )}
+                                        </div>
+                                    </div>
+                                 </div>
+                            </div>
+                         );
+                      })
+                   )}
+                </div>
+             </div>
+          )}
+
           {/* Actions Tab */}
           {activeTab === 'actions' && (
              <div className="space-y-6">
@@ -1579,7 +1780,7 @@ const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave
                      </button>
                    )}
                 </div>
-
+                {/* ... (Keep existing Actions tab contents) ... */}
                 {/* Add Action Form */}
                 {showActionForm && (
                    <div className="bg-slate-50 dark:bg-slate-800/50 p-6 rounded-xl border border-slate-200 dark:border-slate-700 animate-fade-in">
@@ -1593,7 +1794,7 @@ const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave
                            className="px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 dark:text-white"
                          />
                          
-                         {/* Action Owner Selection (New) */}
+                         {/* Action Owner Selection */}
                          <div className="relative">
                            <input 
                              type="text" 
@@ -1684,6 +1885,7 @@ const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave
                             {editingActionId === action.id && editingActionData ? (
                                // Edit Mode
                                <div className="space-y-4">
+                                  {/* ... (Keep existing Edit Action fields) ... */}
                                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                      <input 
                                         value={editingActionData.title}
@@ -1700,7 +1902,7 @@ const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave
                                         <option value="Approved">Approved</option>
                                      </select>
                                   </div>
-
+                                  
                                   {/* Edit Mode Owner (Dropdown) */}
                                   <div className="relative">
                                     <label className="text-xs font-bold text-slate-500 mb-1 block">Owner</label>
@@ -1783,7 +1985,7 @@ const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave
              </div>
           )}
 
-          {/* Comments Tab */}
+          {/* Comments Tab (Unchanged) */}
           {activeTab === 'comments' && (
              <div className="flex flex-col h-full relative">
                 <div className="flex-1 overflow-y-auto pr-2 pb-24 space-y-6">
@@ -1860,7 +2062,7 @@ const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave
              </div>
           )}
 
-          {/* Escalation Tab - REDESIGNED */}
+          {/* Escalation Tab (Unchanged) */}
           {activeTab === 'escalation' && (
              <div className="space-y-6">
                 <div className="bg-orange-50 dark:bg-orange-900/20 p-4 rounded-xl border border-orange-200 dark:border-orange-800 flex gap-3 items-start">
@@ -1996,7 +2198,7 @@ const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave
              </div>
           )}
 
-          {/* History Tab */}
+          {/* History Tab (Unchanged) */}
           {activeTab === 'history' && (
              <div className="space-y-6">
                 <div className="flex justify-between items-center">
@@ -2046,7 +2248,7 @@ const RiskDetail: React.FC<Props> = ({ risk, currentUser, users, onClose, onSave
 
       </div>
 
-      {/* Delete Confirmation Modal */}
+      {/* Delete Confirmation Modal (Unchanged) */}
       {showDeleteConfirm && (
         <div className="absolute inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-fade-in">
           <div className="bg-white dark:bg-slate-900 rounded-xl shadow-2xl p-6 max-w-sm w-full border-t-4 border-red-500 transform transition-all scale-100">
