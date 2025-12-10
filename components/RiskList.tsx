@@ -1,5 +1,12 @@
 
-import React, { useState, useEffect } from 'react';
+
+
+
+
+
+
+
+import React, { useState, useEffect, useMemo } from 'react';
 import { Risk, Country, ActionPlan, User, RiskStatus, Comment, SortOption } from '../types';
 import { calculateRiskScore, getRiskLevel, getControlRatingColor, COUNTRIES, ESCALATION_LEVELS } from '../constants';
 import { ChevronRight, ChevronLeft, ChevronRight as ChevronRightIcon, AlertTriangle, User as UserIcon, Users, ArrowUpDown, MessageSquare, ArrowUp, ArrowDown, Square, Triangle, ShieldAlert, AlertCircle, Layers, ChevronDown, CornerDownRight } from 'lucide-react';
@@ -20,7 +27,7 @@ interface Props {
   
   // New props for Consolidated View
   isConsolidatedView?: boolean;
-  allRisksSource?: Risk[]; // Needed to look up child risks
+  allRisksSource?: Risk[]; // Needed to look up child risks and parent risks
 }
 
 const ITEMS_PER_PAGE = 25;
@@ -43,6 +50,22 @@ const RiskList: React.FC<Props> = ({
   const [sortKey, setSortKey] = useState<keyof Risk | 'residualScore' | 'escalationCount' | 'latestComment'>('creationDate');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+
+  // Efficient Parent Lookup Map
+  // Maps a child risk ID to its Parent Risk object
+  const parentRiskMap = useMemo(() => {
+    const map = new Map<string, Risk>();
+    if (allRisksSource.length > 0) {
+      allRisksSource.forEach(p => {
+        if (p.isConsolidatedGroup && p.childRiskIds) {
+          p.childRiskIds.forEach(childId => {
+            map.set(childId, p);
+          });
+        }
+      });
+    }
+    return map;
+  }, [allRisksSource]);
 
   // Default to all columns if prop not provided (for backward compatibility)
   const isVisible = (key: string) => !visibleColumns || visibleColumns.includes(key);
@@ -285,14 +308,49 @@ const RiskList: React.FC<Props> = ({
   // Dynamic table layout: If fewer than 8 columns are visible, force width to 'w-full' to remove scrollbars and fill space.
   const tableMinWidth = !visibleColumns || visibleColumns.length > 8 ? 'min-w-[1200px]' : 'w-full';
 
+  // Helper to determine row style based on hierarchy type and depth
+  const getRowStyle = (risk: Risk, depth: number, isClosed: boolean, isSelected: boolean) => {
+    let baseStyle = 'cursor-pointer transition-colors group text-sm relative border-b ';
+    
+    if (isClosed) {
+        return baseStyle + 'bg-slate-50 dark:bg-slate-900/50 text-slate-400 dark:text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 border-slate-100 dark:border-slate-800';
+    }
+
+    if (isSelected) {
+        return baseStyle + 'bg-blue-50 dark:bg-blue-900/30 border-blue-100 dark:border-blue-900';
+    }
+
+    // Consolidated View Hierarchy Styling
+    if (risk.isConsolidatedGroup) {
+        if (depth === 0) {
+            // Root Consolidated Group (Top Level)
+            // Slate/Dark background with Indigo Border
+            return baseStyle + 'bg-slate-100 dark:bg-slate-800 border-l-4 border-indigo-500 border-y-slate-200 dark:border-y-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700/80';
+        } else {
+            // Nested Consolidated Group (Sub-level)
+            // Lighter Indigo/Purple tint
+            return baseStyle + 'bg-indigo-50/50 dark:bg-indigo-900/20 border-l-4 border-purple-400 border-indigo-100 dark:border-indigo-900/30 hover:bg-indigo-100/50 dark:hover:bg-indigo-900/40';
+        }
+    } else {
+        // Child/Leaf Risk
+        if (depth > 0) {
+            // Child Risk (Inside a group)
+            // White background, distinct from container
+            return baseStyle + 'bg-white dark:bg-slate-950 border-l-4 border-transparent hover:bg-slate-50 dark:hover:bg-slate-900 border-slate-100 dark:border-slate-800';
+        } else {
+            // Standalone Root Risk (Not in a group, main dashboard style)
+            return baseStyle + 'bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 border-slate-100 dark:border-slate-800';
+        }
+    }
+  };
+
   // Helper to render the TR content (reused for nested risks)
-  const renderRow = (risk: Risk, isNested: boolean = false) => {
+  const renderRow = (risk: Risk, depth: number = 0) => {
     const iScore = calculateRiskScore(risk.inherentImpact, risk.inherentLikelihood);
     const rScore = calculateRiskScore(risk.residualImpact, risk.residualLikelihood);
     const iLevel = getRiskLevel(iScore, risk.inherentImpact);
     const rLevel = getRiskLevel(rScore, risk.residualImpact);
     const controlColor = getControlRatingColor(risk.controlsRating);
-    const hasActions = hasActionPlan(risk.id);
     const { count: commentCount, hasNew: hasNewComments } = getCommentInfo(risk.id);
     const trend = getRiskTrend(risk);
     
@@ -303,29 +361,28 @@ const RiskList: React.FC<Props> = ({
     const isClosed = risk.status === RiskStatus.CLOSED;
 
     const isScoringError = rScore > iScore;
-    const showMissingActionWarning = !hasActions && !isClosed && (rLevel.label === 'Moderate' || rLevel.label === 'Significant');
+    const showMissingActionWarning = !hasActionPlan(risk.id) && !isClosed && (rLevel.label === 'Moderate' || rLevel.label === 'Significant');
     
     // Selection Logic
-    const isSelected = selectedRiskIds?.has(risk.id);
+    const isSelected = selectedRiskIds?.has(risk.id) || false;
     const isExpanded = expandedRows.has(risk.id);
     const isParent = risk.isConsolidatedGroup;
+
+    // Parent Lookup for "Linked" Icon and "Parent Title"
+    const parentRisk = parentRiskMap.get(risk.id);
+    const isNested = depth > 0;
+
+    // Get Hierarchy Styles
+    const rowClassName = getRowStyle(risk, depth, isClosed, isSelected);
 
     return (
       <React.Fragment key={risk.id}>
       <tr 
         onClick={() => onSelectRisk(risk)}
-        className={`cursor-pointer transition-colors group text-sm relative border-b border-slate-50 dark:border-slate-800/50
-          ${isNested ? 'bg-purple-50/40 dark:bg-purple-900/10' : ''} 
-          ${
-          isClosed 
-            ? 'bg-slate-50 dark:bg-slate-800/50 text-slate-400 dark:text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800' 
-            : isNested
-              ? 'hover:bg-purple-100/60 dark:hover:bg-purple-900/20 text-slate-600 dark:text-slate-300'
-              : 'hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300'
-        } ${isSelected ? 'bg-blue-50 dark:bg-blue-900/20' : ''}`}
+        className={rowClassName}
       >
-        {/* Selection Checkbox (Admin Only typically) */}
-        {isSelectionMode && !isConsolidatedView && (
+        {/* Selection Checkbox (Admin Only typically) - Allow selecting nested groups too */}
+        {isSelectionMode && (
            <td className="px-4 py-3 w-14 text-center">
              <div onClick={(e) => e.stopPropagation()} className="flex justify-center">
                <input 
@@ -343,21 +400,33 @@ const RiskList: React.FC<Props> = ({
            <td className="px-4 py-3 w-12 text-center relative">
               {/* Vertical Color Line for Nested Items */}
               {isNested && (
-                  <div className="absolute left-0 top-0 bottom-0 w-1 bg-purple-400/50 dark:bg-purple-600/50"></div>
+                  <div 
+                    className={`absolute left-0 top-0 bottom-0 w-1 ${
+                        depth === 1 ? 'bg-indigo-300 dark:bg-indigo-700' : 
+                        depth === 2 ? 'bg-purple-300 dark:bg-purple-700' : 
+                        'bg-slate-300 dark:bg-slate-700'
+                    }`} 
+                    style={{marginLeft: (depth - 1) * 8}}
+                  ></div>
               )}
 
               {isParent && (
                 <button 
                   onClick={(e) => toggleRowExpansion(e, risk.id)}
-                  className="p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded transition-colors text-slate-500"
+                  className={`p-1 rounded transition-colors ${
+                      isExpanded 
+                        ? 'bg-slate-300 dark:bg-slate-600 text-slate-800 dark:text-white' 
+                        : 'hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500'
+                  }`}
+                  style={{marginLeft: depth * 8}}
                 >
                    {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
                 </button>
               )}
 
               {/* Icon for Nested Items */}
-              {isNested && (
-                 <div className="flex justify-end items-center pr-2 text-purple-400">
+              {isNested && !isParent && (
+                 <div className="flex justify-start items-center pr-2 text-slate-400" style={{paddingLeft: 8 + (depth * 8)}}>
                     <CornerDownRight size={14} />
                  </div>
               )}
@@ -389,6 +458,25 @@ const RiskList: React.FC<Props> = ({
               )}
             </div>
           </td>
+        )}
+
+        {/* 1.5. Consolidated Icon Column (New) */}
+        {isVisible('consolidatedIcon') && (
+           <td className="px-4 py-3 text-center">
+             {parentRisk && (
+                <div className="group/parentIcon relative flex justify-center">
+                    <div className="p-1.5 bg-purple-100 dark:bg-purple-900/20 rounded-lg text-purple-600 dark:text-purple-400">
+                       <Layers size={16} />
+                    </div>
+                    {/* Tooltip */}
+                    <div className="absolute left-full top-1/2 -translate-y-1/2 ml-2 w-max max-w-[250px] px-3 py-2 bg-slate-800 text-white text-xs rounded opacity-0 group-hover/parentIcon:opacity-100 z-50 pointer-events-none transition-opacity shadow-xl whitespace-normal text-left">
+                       <span className="font-bold block mb-1">Linked to consolidated risk</span>
+                       {parentRisk.title}
+                       <div className="absolute top-1/2 -left-1 -translate-y-1/2 w-2 h-2 bg-slate-800 rotate-45"></div>
+                    </div>
+                </div>
+             )}
+           </td>
         )}
 
         {/* 2. My Role Column */}
@@ -431,8 +519,8 @@ const RiskList: React.FC<Props> = ({
         {isVisible('title') && (
           <td className="px-4 py-3">
             <div className="flex items-center gap-2">
-               {isParent && <Layers size={16} className="text-purple-600 dark:text-purple-400 flex-shrink-0" />}
-              <span className={isClosed ? 'line-through text-slate-400 dark:text-slate-500' : 'text-slate-800 dark:text-slate-200'}>
+               {isParent && <Layers size={16} className={`${depth === 0 ? 'text-indigo-600 dark:text-indigo-400' : 'text-purple-600 dark:text-purple-400'} flex-shrink-0`} />}
+              <span className={`${isClosed ? 'line-through text-slate-400 dark:text-slate-500' : 'text-slate-800 dark:text-slate-200'} ${isParent && depth === 0 ? 'font-bold' : ''}`}>
                 {risk.title}
               </span>
               {isClosed && (
@@ -442,6 +530,13 @@ const RiskList: React.FC<Props> = ({
               )}
             </div>
           </td>
+        )}
+
+        {/* 6.5 Parent Consolidated Title (Hidden by default) */}
+        {isVisible('parentRiskTitle') && (
+           <td className="px-4 py-3 text-purple-600 dark:text-purple-400 font-medium text-xs">
+              {parentRisk ? parentRisk.title : '-'}
+           </td>
         )}
 
         {/* 7. Function */}
@@ -558,12 +653,12 @@ const RiskList: React.FC<Props> = ({
           </td>
         )}
       </tr>
-      {/* Nested Rows for Consolidated View */}
+      {/* Recursive Nested Rows for Consolidated View */}
       {isConsolidatedView && isParent && isExpanded && risk.childRiskIds && risk.childRiskIds.length > 0 && (
          risk.childRiskIds.map(childId => {
             const childRisk = allRisksSource.find(r => r.id === childId);
             if (!childRisk) return null;
-            return renderRow(childRisk, true); // Recursive call for child row
+            return renderRow(childRisk, depth + 1); // Increment depth
          })
       )}
       </React.Fragment>
@@ -576,17 +671,19 @@ const RiskList: React.FC<Props> = ({
         <table className={`w-full text-left border-collapse ${tableMinWidth}`}>
           <thead>
             <tr className="bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 text-xs text-slate-500 dark:text-slate-400 font-bold">
-              {isSelectionMode && !isConsolidatedView && (
+              {isSelectionMode && (
                  <th className="px-4 py-4 w-14 text-center text-xs uppercase tracking-wider font-bold text-slate-500 select-none">Select</th>
               )}
-              {isConsolidatedView && <th className="px-4 py-4 w-10"></th>}
+              {isConsolidatedView && <th className="px-4 py-4 w-12"></th>}
 
               {isVisible('warning') && <th className="px-4 py-4 w-10"></th>} {/* 1. Warning Icon */}
+              {isVisible('consolidatedIcon') && <th className="px-4 py-4 w-14 text-center">Linked</th>} {/* 1.5. Consolidated Icon */}
               {isVisible('role') && <th className="px-4 py-4 w-32">My Role</th>} {/* 2. My Role */}
               {isVisible('country') && <th className="px-4 py-4 w-20">Country</th>} {/* 3. Country */}
               {isVisible('register') && <SortHeader label="Risk Register" columnKey="register" width="w-32" />} {/* 4. Risk Register */}
               {isVisible('id') && <SortHeader label="Risk Id" columnKey="id" width="w-24" />} {/* 5. Risk ID */}
               {isVisible('title') && <SortHeader label="Key Business Risk Title" columnKey="title" width="w-80" />} {/* 6. Key Business Risk Title */}
+              {isVisible('parentRiskTitle') && <th className="px-4 py-4 w-48 text-purple-600 dark:text-purple-400">Consolidated Key Business Risk Title</th>} {/* 6.5. Parent Title */}
               {isVisible('functionArea') && <SortHeader label="Function/Area" columnKey="functionArea" width="w-48" />} {/* 7. Function/Area */}
               {isVisible('trend') && <th className="px-4 py-4 w-16 text-center">Trend</th>} {/* 8. Trend */}
               {isVisible('inherentScore') && <th className="px-4 py-4 w-40">Inherent Risk Score</th>} {/* 9. Inherent Risk Score */}

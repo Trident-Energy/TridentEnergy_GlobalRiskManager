@@ -1,3 +1,4 @@
+
 import React, { useMemo } from 'react';
 import { Risk, RiskStatus, User } from '../types';
 import { UserCheck, Users, BarChart as BarChartIcon, Filter, X, ShieldAlert } from 'lucide-react';
@@ -12,6 +13,7 @@ interface Props {
   onQuickFilterChange: (filter: 'ALL' | 'MY_RISKS' | 'COLLAB' | 'ESCALATED') => void;
   activeHeatMapFilter: CellFilter | null;
   onHeatMapFilterChange: (filter: CellFilter | null) => void;
+  includeConsolidatedRisks?: boolean; // New prop to control exclusion logic
 }
 
 const InteractiveCard = ({ 
@@ -54,19 +56,27 @@ const RiskDashboard: React.FC<Props> = ({
   quickFilter, 
   onQuickFilterChange,
   activeHeatMapFilter,
-  onHeatMapFilterChange
+  onHeatMapFilterChange,
+  includeConsolidatedRisks = false
 }) => {
   
   // Filter risks for Chart statistics based on HeatMap selection
   const filteredRisks = useMemo(() => {
-    if (!activeHeatMapFilter) return risks;
+    // KPI Logic:
+    // If includeConsolidatedRisks is FALSE (Main Dashboard), exclude consolidated groups.
+    // If TRUE (Consolidated Dashboard), include them (use list as is).
+    const baseRisks = includeConsolidatedRisks 
+      ? risks 
+      : risks.filter(r => !r.isConsolidatedGroup);
+
+    if (!activeHeatMapFilter) return baseRisks;
     
-    return risks.filter(r => {
+    return baseRisks.filter(r => {
       const impact = activeHeatMapFilter.type === 'inherent' ? r.inherentImpact : r.residualImpact;
       const likelihood = activeHeatMapFilter.type === 'inherent' ? r.inherentLikelihood : r.residualLikelihood;
       return impact === activeHeatMapFilter.impact && likelihood === activeHeatMapFilter.likelihood;
     });
-  }, [risks, activeHeatMapFilter]);
+  }, [risks, activeHeatMapFilter, includeConsolidatedRisks]);
 
   // KPI Calculations
   const stats = useMemo(() => {
@@ -150,10 +160,10 @@ const RiskDashboard: React.FC<Props> = ({
           </div>
         </div>
 
-        {/* Center Column: All Risks Heat Maps (1 Column) */}
+        {/* Center Column: Heat Maps (1 Column) */}
         <RiskHeatMap 
-          title="All Residual Risks" 
-          risks={risks}
+          title={includeConsolidatedRisks ? "Consolidated Risk Heatmap" : "Operational Risk Heatmap"}
+          risks={filteredRisks} // Pass the filtered list (which respects the includeConsolidatedRisks flag)
           type="residual"
           onCellClick={handleHeatMapClick}
           activeFilter={activeHeatMapFilter}
@@ -169,7 +179,9 @@ const RiskDashboard: React.FC<Props> = ({
               </div>
               <div>
                 <h3 className="font-bold text-slate-800 dark:text-white text-lg">Portfolio</h3>
-                <p className="text-xs text-slate-500 dark:text-slate-400">Overview Stats.</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  {includeConsolidatedRisks ? 'Including Consolidated Groups' : 'Excluding Consolidated Groups'}
+                </p>
               </div>
             </div>
             

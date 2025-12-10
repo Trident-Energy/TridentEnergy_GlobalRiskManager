@@ -1,7 +1,5 @@
-
-
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { LayoutDashboard, BarChart3, Settings, Search, Plus, User as UserIcon, LogOut, XCircle, Download, RefreshCw, AlertCircle, AlertTriangle, Moon, Sun, Grid2x2, Columns, CheckSquare, Square, EyeOff, Shield, BookOpen, Layers, ChevronDown, X, Globe } from 'lucide-react';
+import { LayoutDashboard, BarChart3, Settings, Search, Plus, User as UserIcon, LogOut, XCircle, Download, RefreshCw, AlertCircle, AlertTriangle, Moon, Sun, Grid2x2, Columns, CheckSquare, Square, EyeOff, Shield, BookOpen, Layers, ChevronDown, X } from 'lucide-react';
 import RiskDashboard from './components/RiskDashboard';
 import RiskList from './components/RiskList';
 import RiskDetail from './components/RiskDetail';
@@ -9,7 +7,7 @@ import RiskCategoryDashboard from './components/RiskCategoryDashboard';
 import UserManagement from './components/UserManagement';
 import AdminBulkActions from './components/AdminBulkActions';
 import UserGuide from './components/UserGuide';
-import { MOCK_RISKS, MOCK_ACTIONS, MOCK_COMMENTS, COUNTRIES, MOCK_USERS, GROUPS, calculateRiskScore, getRiskLevel, AVAILABLE_COLUMNS, ESCALATION_LEVELS } from './constants';
+import { MOCK_RISKS, MOCK_ACTIONS, MOCK_COMMENTS, COUNTRIES, MOCK_USERS, GROUPS, calculateRiskScore, getRiskLevel, AVAILABLE_COLUMNS } from './constants';
 import { Country, Risk, ActionPlan, Comment, User, RiskStatus, RiskLevel, AuditLogEntry, UserRole, EscalationLevel, ScoreSnapshot, SortOption, RiskCategory, ControlRating } from './types';
 import { CellFilter } from './components/RiskHeatMap';
 
@@ -69,7 +67,7 @@ const App = () => {
   const [users, setUsers] = useState<User[]>(MOCK_USERS);
   
   // Current User State (Initialized with Admin user)
-  const [currentUser, setCurrentUser] = useState<User>(MOCK_USERS.find(u => u.role === 'RMIA') || MOCK_USERS[0]); 
+  const [currentUser, setCurrentUser] = useState<User>(MOCK_USERS[0]); 
   
   // Selected Risk for Detail View
   const [selectedRisk, setSelectedRisk] = useState<Risk | null>(null);
@@ -83,9 +81,6 @@ const App = () => {
   const [showConsolidateModal, setShowConsolidateModal] = useState(false);
   const [newConsolidatedTitle, setNewConsolidatedTitle] = useState('');
   const [newConsolidatedOwner, setNewConsolidatedOwner] = useState('');
-  const [newConsolidatedCountry, setNewConsolidatedCountry] = useState<Country | ''>('');
-  const [newConsolidatedEscalation, setNewConsolidatedEscalation] = useState<string>('');
-  const [showConsolidatedOwnerList, setShowConsolidatedOwnerList] = useState(false);
 
   // Toggle Dark Mode
   useEffect(() => {
@@ -135,15 +130,12 @@ const App = () => {
      
      // Determine parent properties (take from first or default)
      const primaryChild = childRisks[0];
-     
-     // Use selected country if available, otherwise inherit from primary child
-     const finalCountry = newConsolidatedCountry || primaryChild.country;
 
      const newParentRisk: Risk = {
         id: `GRP-${Date.now()}`, // Group ID
         creationDate: new Date().toISOString().split('T')[0],
         register: primaryChild.register,
-        country: finalCountry,
+        country: primaryChild.country,
         title: newConsolidatedTitle,
         description: 'Consolidated Risk Group containing: ' + childRisks.map(r => r.title).join(', '),
         owner: newConsolidatedOwner || currentUser.name,
@@ -176,8 +168,6 @@ const App = () => {
      setSelectedRiskIds(new Set());
      setNewConsolidatedTitle('');
      setNewConsolidatedOwner('');
-     setNewConsolidatedCountry('');
-     setNewConsolidatedEscalation('');
      setShowConsolidateModal(false);
   };
 
@@ -186,19 +176,6 @@ const App = () => {
   const uniqueRegisters = useMemo(() => Array.from(new Set(risks.map(r => r.register))).sort(), [risks]);
   const uniqueFunctions = useMemo(() => Array.from(new Set(risks.map(r => r.functionArea))).sort(), [risks]);
   const uniqueLastReviewers = useMemo(() => Array.from(new Set(risks.map(r => r.lastReviewer))).filter(Boolean).sort(), [risks]);
-
-  // Filtered Owners List for Consolidation Modal
-  const filteredConsolidatedOwners = useMemo(() => {
-    return users.filter(u => {
-      const matchesSearch = u.name.toLowerCase().includes(newConsolidatedOwner.toLowerCase());
-      
-      const matchesCountry = !newConsolidatedCountry || u.country === newConsolidatedCountry || (u.groups || []).includes(`REG_${newConsolidatedCountry}`);
-      
-      const matchesEscalation = !newConsolidatedEscalation || (u.groups || []).includes(newConsolidatedEscalation);
-
-      return matchesSearch && matchesCountry && matchesEscalation;
-    });
-  }, [users, newConsolidatedOwner, newConsolidatedCountry, newConsolidatedEscalation]);
 
   // 1. Authorized Risks (Permissions Only)
   const authorizedRisks = useMemo(() => {
@@ -248,11 +225,20 @@ const App = () => {
   }, [authorizedRisks, selectedCountry, searchQuery, filterOwner, filterRegister, filterFunction, filterStatus, filterLastReviewer, filterScore]);
 
   // 3. Operational Risks (Dashboard Grid View - Roots Only)
-  // CHANGED: Returns ALL visible risks (flat list) to ensure nested consolidated risks are visible and editable.
-  // The filtering for KPIs is handled inside the RiskDashboard component (excluding isConsolidatedGroup).
+  // This filter ensures that if a risk (or consolidated group) is a child of another group, it doesn't appear at the top level.
+  // It SHOWS standalone risks AND top-level Consolidated Groups.
   const operationalRisks = useMemo(() => {
-    return dashboardRisks;
-  }, [dashboardRisks]);
+    // 1. Identify all IDs that are children of any group
+    const allChildIds = new Set<string>();
+    risks.forEach(r => {
+      if (r.isConsolidatedGroup && r.childRiskIds) {
+        r.childRiskIds.forEach(id => allChildIds.add(id));
+      }
+    });
+
+    // 2. Filter dashboardRisks to only include items that are NOT in the child list (Roots)
+    return dashboardRisks.filter(r => !allChildIds.has(r.id));
+  }, [dashboardRisks, risks]);
 
   // 4. List Risks (Context for the Dashboard Grid)
   const listRisks = useMemo(() => {
@@ -287,8 +273,7 @@ const App = () => {
   const consolidatedRisksList = useMemo(() => {
      // Identify children to hide them from the top level list in Consolidated Tab
      const groupedRiskIds = new Set<string>();
-     // Only consider children of VISIBLE groups. If parent isn't visible, child shouldn't be hidden.
-     dashboardRisks.forEach(r => {
+     risks.forEach(r => {
         if (r.isConsolidatedGroup && r.childRiskIds) {
            r.childRiskIds.forEach(id => groupedRiskIds.add(id));
         }
@@ -309,13 +294,10 @@ const App = () => {
         // Check if Owner is a Country Manager
         const ownerUser = users.find(u => u.name === r.owner);
         const isCMOwner = ownerUser?.role === 'Country Manager';
-        
-        // Check if escalated to ME specifically (so I can see it even if not strictly "high level" role)
-        const isEscalatedToMe = r.escalations?.some(e => e.userId === currentUser.id);
 
-        return isGroup || isCEO || isCMEscalation || isCMOwner || isEscalatedToMe; 
+        return isGroup || isCEO || isCMEscalation || isCMOwner; 
      });
-  }, [dashboardRisks, users, currentUser]);
+  }, [dashboardRisks, users, risks]);
 
   // 6. Filtered Consolidated Risks (For the grid in Consolidated Tab)
   const filteredConsolidatedRisks = useMemo(() => {
@@ -716,8 +698,7 @@ const App = () => {
   const hiddenColumnsCount = AVAILABLE_COLUMNS.length - visibleColumns.length;
 
   // Access Control for New Tab
-  // All levels can now access the consolidated dashboard
-  const canAccessConsolidated = true;
+  const canAccessConsolidated = ['RMIA', 'Country Manager', 'TEML Leadership Team', 'CEO'].includes(currentUser.role);
 
   return (
     <div className="flex flex-col h-screen bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-100 font-sans w-full max-w-full overflow-hidden transition-colors duration-200">
@@ -800,7 +781,7 @@ const App = () => {
           <nav className="flex gap-2">
             <NavItem 
               icon={<LayoutDashboard size={18} />} 
-              label="All Risks" 
+              label="Dashboard" 
               active={currentView === 'dashboard'} 
               onClick={() => setCurrentView('dashboard')} 
             />
@@ -992,7 +973,6 @@ const App = () => {
                 onQuickFilterChange={setQuickFilter}
                 activeHeatMapFilter={dashboardHeatMapFilter}
                 onHeatMapFilterChange={setDashboardHeatMapFilter}
-                includeConsolidatedRisks={false} // Explicitly false for clarity (though it's default)
               />
 
               <div className="flex items-center justify-between">
@@ -1025,7 +1005,7 @@ const App = () => {
                 isSelectionMode={currentUser.role === 'RMIA'}
                 selectedRiskIds={selectedRiskIds}
                 onToggleSelection={handleToggleSelectRisk}
-                isConsolidatedView={false} // Disable expansion in main dashboard - show flat list
+                isConsolidatedView={true} // Allow expansion in main dashboard too for root consolidated items
               />
             </div>
           )}
@@ -1050,7 +1030,7 @@ const App = () => {
                    </div>
                 </div>
 
-                {/* Dashboard Widgets for Consolidated View - ENABLE CONSOLIDATED RISKS IN KPIS */}
+                {/* Dashboard Widgets for Consolidated View */}
                 <RiskDashboard 
                   risks={consolidatedRisksList} 
                   escalatedCount={consolidatedEscalationsCount}
@@ -1059,12 +1039,11 @@ const App = () => {
                   onQuickFilterChange={setConsolidatedQuickFilter}
                   activeHeatMapFilter={consolidatedHeatMapFilter}
                   onHeatMapFilterChange={setConsolidatedHeatMapFilter}
-                  includeConsolidatedRisks={true} // Enable Consolidated Groups in KPIs/Heatmap
                 />
 
                 <div className="bg-white dark:bg-slate-900 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden">
                    <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-800 font-bold text-slate-800 dark:text-white">
-                      Consolidated Dashboard
+                      Consolidated Groups & Strategic Risks
                    </div>
                    <RiskList 
                       risks={filteredConsolidatedRisks} // Use filtered list
@@ -1077,7 +1056,7 @@ const App = () => {
                       }}
                       sortOrder={sortOrder}
                       visibleColumns={visibleColumns}
-                      isConsolidatedView={true} // Enable expansion logic for consolidated dashboard
+                      isConsolidatedView={true} // Enable expansion logic
                       allRisksSource={risks} // Pass full list for looking up children
                    />
                 </div>
@@ -1087,7 +1066,7 @@ const App = () => {
           {/* CATEGORY DASHBOARD VIEW */}
           {currentView === 'categoryDashboard' && (
              <RiskCategoryDashboard 
-               risks={operationalRisks} // Use filtered operational risks (now contains flat list)
+               risks={operationalRisks} // Use filtered operational risks
                actions={actions}
                comments={comments}
                currentUser={currentUser}
@@ -1182,17 +1161,7 @@ const App = () => {
             {/* Primary Action */}
             <button 
               onClick={() => {
-                  // Pre-select country if all selected risks share the same country
-                  const selected = Array.from(selectedRiskIds);
-                  const selectedRiskObjs = risks.filter(r => selected.includes(r.id));
-                  const commonCountry = selectedRiskObjs.length > 0 && selectedRiskObjs.every(r => r.country === selectedRiskObjs[0].country) 
-                    ? selectedRiskObjs[0].country 
-                    : '';
-
-                  setNewConsolidatedTitle('');
-                  setNewConsolidatedCountry(commonCountry);
-                  setNewConsolidatedEscalation('');
-                  setNewConsolidatedOwner('');
+                  setNewConsolidatedOwner(currentUser.name);
                   setShowConsolidateModal(true);
               }}
               className="flex items-center gap-2 px-4 py-2 bg-white text-slate-900 rounded-lg hover:bg-blue-50 transition-colors font-bold text-sm shadow-sm"
@@ -1235,74 +1204,22 @@ const App = () => {
                     />
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Region/Country</label>
-                        <div className="relative">
-                            <Globe className="absolute left-3 top-3 text-slate-400" size={18} />
-                            <select
-                                value={newConsolidatedCountry}
-                                onChange={(e) => setNewConsolidatedCountry(e.target.value as Country)}
-                                className="w-full pl-10 pr-4 py-3 border border-slate-300 dark:border-slate-600 rounded-lg bg-slate-50 dark:bg-slate-800 dark:text-white focus:ring-2 focus:ring-purple-500 outline-none appearance-none"
-                            >
-                                <option value="">Select Country...</option>
-                                {COUNTRIES.map(c => <option key={c.code} value={c.code}>{c.label}</option>)}
-                            </select>
-                            <ChevronDown className="absolute right-3 top-3 text-slate-400 pointer-events-none" size={18} />
-                        </div>
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Escalation Level</label>
-                        <div className="relative">
-                            <Shield className="absolute left-3 top-3 text-slate-400" size={18} />
-                            <select
-                                value={newConsolidatedEscalation}
-                                onChange={(e) => setNewConsolidatedEscalation(e.target.value)}
-                                className="w-full pl-10 pr-4 py-3 border border-slate-300 dark:border-slate-600 rounded-lg bg-slate-50 dark:bg-slate-800 dark:text-white focus:ring-2 focus:ring-purple-500 outline-none appearance-none"
-                            >
-                                <option value="">No specific level...</option>
-                                {ESCALATION_LEVELS.map(l => <option key={l} value={l}>{l}</option>)}
-                            </select>
-                            <ChevronDown className="absolute right-3 top-3 text-slate-400 pointer-events-none" size={18} />
-                        </div>
-                      </div>
-                  </div>
-
                   <div>
                     <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Assign Owner <span className="text-red-500">*</span></label>
                     <div className="relative">
                         <UserIcon className="absolute left-3 top-3 text-slate-400" size={18} />
-                        <input
-                            type="text"
-                            placeholder="Search owner..."
+                        <select
                             value={newConsolidatedOwner}
                             onChange={(e) => setNewConsolidatedOwner(e.target.value)}
-                            onFocus={() => setShowConsolidatedOwnerList(true)}
-                            onBlur={() => setTimeout(() => setShowConsolidatedOwnerList(false), 200)}
-                            className="w-full pl-10 pr-4 py-3 border border-slate-300 dark:border-slate-600 rounded-lg bg-slate-50 dark:bg-slate-800 dark:text-white focus:ring-2 focus:ring-purple-500 outline-none"
-                        />
-                        {showConsolidatedOwnerList && (
-                            <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg shadow-xl z-20 max-h-48 overflow-y-auto">
-                                {filteredConsolidatedOwners.length > 0 ? (
-                                    filteredConsolidatedOwners.map(u => (
-                                        <button
-                                            key={u.id}
-                                            onMouseDown={() => {
-                                                setNewConsolidatedOwner(u.name);
-                                                setShowConsolidatedOwnerList(false);
-                                            }}
-                                            className="w-full text-left px-4 py-2 hover:bg-slate-50 dark:hover:bg-slate-800 text-sm text-slate-700 dark:text-slate-200 flex justify-between items-center"
-                                        >
-                                            <span>{u.name}</span>
-                                            <span className="text-xs text-slate-400">{u.role}</span>
-                                        </button>
-                                    ))
-                                ) : (
-                                    <div className="p-3 text-sm text-slate-500 text-center">No users found for selection</div>
-                                )}
-                            </div>
-                        )}
+                            className="w-full pl-10 pr-4 py-3 border border-slate-300 dark:border-slate-600 rounded-lg bg-slate-50 dark:bg-slate-800 dark:text-white focus:ring-2 focus:ring-purple-500 outline-none appearance-none"
+                        >
+                            {users.map(u => (
+                                <option key={u.id} value={u.name}>{u.name} ({u.role})</option>
+                            ))}
+                        </select>
+                        <div className="absolute right-3 top-3 pointer-events-none text-slate-400">
+                             <ChevronDown size={18} /> 
+                        </div>
                     </div>
                   </div>
                </div>

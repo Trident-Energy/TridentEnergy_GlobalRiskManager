@@ -1,5 +1,12 @@
 
 
+
+
+
+
+
+
+
 import React, { useState, useEffect, useRef } from 'react';
 import { Risk, ActionPlan, Comment, RiskStatus, ControlRating, RiskCategory, Country, User, AuditLogEntry, Attachment, EscalationLevel, EscalationEntry, UserRole, RiskControl } from '../types';
 import { calculateRiskScore, getRiskLevel, COUNTRIES, IMPACT_OPTIONS, LIKELIHOOD_OPTIONS, PRINCIPAL_RISKS_MAPPING, RISK_REGISTER_DATA, ESCALATION_LEVELS, getRatingValue, getRatingFromValue } from '../constants';
@@ -309,6 +316,164 @@ const CommentItem: React.FC<CommentItemProps> = ({
   );
 };
 
+// --- HIERARCHY TREE VIEW COMPONENT ---
+interface HierarchyNodeProps {
+  riskId: string;
+  allRisks: Risk[];
+  users: User[];
+  depth?: number;
+  onUnlink: (id: string) => void;
+  isAdmin: boolean;
+}
+
+const HierarchyNode: React.FC<HierarchyNodeProps> = ({ riskId, allRisks, users, depth = 0, onUnlink, isAdmin }) => {
+  const risk = allRisks.find(r => r.id === riskId);
+  if (!risk) return null;
+
+  const score = calculateRiskScore(risk.residualImpact, risk.residualLikelihood);
+  const level = getRiskLevel(score, risk.residualImpact);
+  const countryConfig = COUNTRIES.find(c => c.code === risk.country);
+  
+  const isParent = risk.isConsolidatedGroup;
+  
+  // Visual Styles
+  let borderClass = 'border-l-4 ';
+  if (isParent) {
+      borderClass += 'border-indigo-600';
+  } else {
+      // Color code leaf nodes by risk level
+      if (level.label === 'Significant') borderClass += 'border-red-500';
+      else if (level.label === 'Moderate') borderClass += 'border-yellow-500';
+      else borderClass += 'border-emerald-500';
+  }
+
+  const bgClass = isParent 
+      ? 'bg-indigo-50 dark:bg-indigo-950/30' 
+      : 'bg-white dark:bg-slate-800';
+
+  const containerClasses = `relative rounded-lg border border-slate-200 dark:border-slate-700 shadow-sm hover:shadow-md transition-all p-4 ${bgClass} ${borderClass}`;
+
+  return (
+    <div className={`relative ${depth > 0 ? 'mt-4 ml-6' : 'mt-2'}`}>
+        {/* Connector Line for indented children */}
+        {depth > 0 && (
+            <div className="absolute -left-6 top-1/2 -translate-y-1/2 w-6 h-px bg-slate-300 dark:bg-slate-600"></div>
+        )}
+        
+        <div className={containerClasses}>
+            <div className="flex justify-between items-start gap-3">
+                <div className="flex-1 min-w-0">
+                    {/* Header: ID & Title */}
+                    <div className="flex items-center gap-2 mb-1">
+                        <span className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded ${isParent ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300' : 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300'}`}>
+                            {risk.id}
+                        </span>
+                        {isParent && (
+                            <span className="flex items-center gap-1 text-[10px] font-bold text-indigo-700 dark:text-indigo-300 bg-white/50 dark:bg-white/10 px-1.5 py-0.5 rounded border border-indigo-200 dark:border-indigo-800">
+                                <Layers size={10} /> Group
+                            </span>
+                        )}
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${level.color} bg-opacity-10 text-opacity-100 border border-current bg-transparent`}>
+                            {level.label} ({score})
+                        </span>
+                    </div>
+                    
+                    <h4 className="text-sm font-bold text-slate-800 dark:text-slate-100 leading-snug mb-1">
+                        {risk.title}
+                    </h4>
+                    
+                    {/* Description Excerpt */}
+                    <p className="text-xs text-slate-500 dark:text-slate-400 line-clamp-2 mb-3 leading-relaxed">
+                        {risk.description || "No description provided."}
+                    </p>
+
+                    {/* Metadata Grid - More Info */}
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-y-2 gap-x-4 text-xs pt-3 border-t border-slate-200 dark:border-slate-700/50">
+                        <div className="flex flex-col">
+                            <span className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">Owner</span>
+                            <div className="flex items-center gap-1.5 text-slate-700 dark:text-slate-300 font-medium truncate">
+                                <UserIcon size={12} className="text-slate-400" />
+                                {risk.owner}
+                            </div>
+                        </div>
+                        
+                        <div className="flex flex-col">
+                            <span className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">Register</span>
+                            <div className="flex items-center gap-1.5 text-slate-700 dark:text-slate-300 font-medium truncate">
+                                <Briefcase size={12} className="text-slate-400" />
+                                {risk.register}
+                            </div>
+                        </div>
+
+                        <div className="flex flex-col">
+                            <span className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">Category</span>
+                            <div className="flex items-center gap-1.5 text-slate-700 dark:text-slate-300 font-medium truncate">
+                                <Tag size={12} className="text-slate-400" />
+                                {risk.category.split(' ')[0]}
+                            </div>
+                        </div>
+
+                         <div className="flex flex-col">
+                            <span className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">Status</span>
+                            <div className="flex items-center gap-1.5 text-slate-700 dark:text-slate-300 font-medium truncate">
+                                <Activity size={12} className={risk.status === 'Open' ? 'text-blue-500' : 'text-slate-400'} />
+                                {risk.status}
+                            </div>
+                        </div>
+                        
+                        <div className="flex flex-col sm:col-span-2">
+                            <span className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">Function/Area</span>
+                            <div className="text-slate-700 dark:text-slate-300 font-medium truncate" title={risk.functionArea}>
+                                {risk.functionArea}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Actions */}
+                <div className="flex flex-col items-end gap-2 pl-2">
+                    {countryConfig && (
+                        <img src={countryConfig.flagUrl} alt={countryConfig.code} className="w-5 h-5 rounded-full object-cover shadow-sm border border-slate-100 dark:border-slate-600" title={countryConfig.label} />
+                    )}
+                    
+                    {isAdmin && (
+                        <button 
+                            type="button"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onUnlink(risk.id);
+                            }}
+                            className="mt-2 p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors"
+                            title="Unlink Risk"
+                        >
+                            <MinusCircle size={16} />
+                        </button>
+                    )}
+                </div>
+            </div>
+        </div>
+
+      {/* Recursive Children */}
+      {isParent && risk.childRiskIds && risk.childRiskIds.length > 0 && (
+        <div className="ml-6 border-l-2 border-slate-200 dark:border-slate-700 pl-4 pb-1">
+           {risk.childRiskIds.map(childId => (
+             <HierarchyNode 
+               key={childId}
+               riskId={childId}
+               allRisks={allRisks}
+               users={users}
+               depth={depth + 1}
+               onUnlink={onUnlink}
+               isAdmin={isAdmin}
+             />
+           ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+
 const RiskDetail: React.FC<Props> = ({ 
   risk, 
   currentUser, 
@@ -403,6 +568,8 @@ const RiskDetail: React.FC<Props> = ({
 
   // Delete Confirmation State
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  // Unlink Confirmation State
+  const [riskToUnlink, setRiskToUnlink] = useState<string | null>(null);
 
   // Escalation Tab State (Admin Feature)
   const [escalationSearch, setEscalationSearch] = useState('');
@@ -609,10 +776,17 @@ const RiskDetail: React.FC<Props> = ({
   };
 
   const handleUnlinkRisk = (riskId: string) => {
-     setFormData(prev => ({
-        ...prev,
-        childRiskIds: (prev.childRiskIds || []).filter(id => id !== riskId)
-     }));
+     setRiskToUnlink(riskId);
+  };
+
+  const confirmUnlink = () => {
+     if (riskToUnlink) {
+        setFormData(prev => ({
+           ...prev,
+           childRiskIds: (prev.childRiskIds || []).filter(id => id !== riskToUnlink)
+        }));
+        setRiskToUnlink(null);
+     }
   };
 
   // --- Escalation Logic with Checkbox & Admin Overrides ---
@@ -1326,7 +1500,7 @@ const RiskDetail: React.FC<Props> = ({
                                   <pre className="whitespace-pre-wrap font-sans text-sm text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 p-3 rounded-lg border border-blue-100 dark:border-blue-900/50">
                                     {aiControlsSuggestion.text}
                                   </pre>
-                               </div>
+                                </div>
                                <div className="text-xs text-blue-700 dark:text-blue-400 mb-3 italic">
                                   Rationale: {aiControlsSuggestion.feedback}
                                </div>
@@ -1646,6 +1820,7 @@ const RiskDetail: React.FC<Props> = ({
                                        <div className="font-bold text-sm text-slate-800 dark:text-slate-200">{r.title}</div>
                                        <div className="text-xs text-slate-500 flex gap-2">
                                           <span className="font-mono">{r.id}</span>
+                                          {r.isConsolidatedGroup && <span className="text-purple-500 font-bold">(Group)</span>}
                                           <span>• {r.owner}</span>
                                        </div>
                                     </button>
@@ -1659,7 +1834,7 @@ const RiskDetail: React.FC<Props> = ({
                    </div>
                 )}
 
-                {/* List of Linked Risks (Enhanced) */}
+                {/* List of Linked Risks (Enhanced Tree View) */}
                 <div className="space-y-3">
                    {(!formData.childRiskIds || formData.childRiskIds.length === 0) ? (
                       <div className="text-center py-12 text-slate-400 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-dashed border-slate-300 dark:border-slate-700">
@@ -1667,100 +1842,18 @@ const RiskDetail: React.FC<Props> = ({
                          <p>No risks linked to this group yet.</p>
                       </div>
                    ) : (
-                      formData.childRiskIds.map(childId => {
-                         const childRisk = allRisks.find(r => r.id === childId);
-                         if (!childRisk) return null; // Handle deleted risks gracefully
-
-                         const score = calculateRiskScore(childRisk.residualImpact, childRisk.residualLikelihood);
-                         const level = getRiskLevel(score, childRisk.residualImpact);
-                         const countryConfig = COUNTRIES.find(c => c.code === childRisk.country);
-                         const ownerUser = users.find(u => u.name === childRisk.owner);
-
-                         return (
-                            <div key={childId} className="relative bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm hover:shadow-md transition-shadow p-4 overflow-hidden group">
-                                 {/* Colored Side Bar based on Risk Level */}
-                                 <div className={`absolute left-0 top-0 bottom-0 w-1.5 ${level.color.split(' ')[0]}`}></div>
-                                 
-                                 <div className="pl-3 flex flex-col gap-3">
-                                    {/* Header: ID, Title, Status */}
-                                    <div className="flex justify-between items-start">
-                                       <div className="flex items-center gap-2">
-                                          <span className="font-mono text-xs font-bold bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 rounded text-slate-600 dark:text-slate-300">
-                                             {childRisk.id}
-                                          </span>
-                                          <h4 className="font-bold text-slate-800 dark:text-white text-sm">{childRisk.title}</h4>
-                                       </div>
-                                       <div className="flex items-center gap-3">
-                                           {/* Score Badge (Now in Header) */}
-                                           <div className="flex items-center gap-1.5">
-                                              <span className={`px-2 py-0.5 rounded-full text-white font-bold text-[10px] shadow-sm ${level.color}`}>
-                                                 {level.label} ({score})
-                                              </span>
-                                           </div>
-
-                                           <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-                                              childRisk.status === 'Open' ? 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-900/30 dark:border-blue-800 dark:text-blue-300' :
-                                              childRisk.status === 'Reviewed' ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:border-emerald-800 dark:text-emerald-300' :
-                                              'bg-slate-50 text-slate-600 border-slate-200 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-400'
-                                           }`}>
-                                              {childRisk.status}
-                                           </span>
-                                           {isAdmin && (
-                                              <button 
-                                                 onClick={() => handleUnlinkRisk(childId)}
-                                                 className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
-                                                 title="Unlink Risk"
-                                              >
-                                                 <MinusCircle size={16} />
-                                              </button>
-                                           )}
-                                       </div>
-                                    </div>
-
-                                    {/* Details Grid (Expanded Information) */}
-                                    <div className="mt-1 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-y-3 gap-x-6 text-xs text-slate-500 dark:text-slate-400 border-t border-slate-50 dark:border-slate-800 pt-3">
-                                        
-                                        {/* Col 1: Context */}
-                                        <div className="space-y-1.5">
-                                            <div className="flex items-center gap-2">
-                                                {countryConfig ? <img src={countryConfig.flagUrl} alt="" className="w-4 h-4 rounded-full object-cover shadow-sm" /> : <Globe size={14} />}
-                                                <span className="font-medium text-slate-700 dark:text-slate-200">{countryConfig?.label || childRisk.country}</span>
-                                            </div>
-                                             <div className="flex items-center gap-2" title="Risk Register">
-                                                <Layers size={14} className="text-slate-400" />
-                                                <span>Register: <span className="font-medium text-slate-600 dark:text-slate-300">{childRisk.register}</span></span>
-                                            </div>
-                                        </div>
-
-                                        {/* Col 2: Classification */}
-                                        <div className="space-y-1.5">
-                                            <div className="flex items-center gap-2" title="Function/Area">
-                                                 <Briefcase size={14} className="text-slate-400" />
-                                                 <span className="truncate">Function: <span className="font-medium text-slate-600 dark:text-slate-300">{childRisk.functionArea}</span></span>
-                                            </div>
-                                             <div className="flex items-center gap-2" title="Category">
-                                                 <Tag size={14} className="text-slate-400" />
-                                                 <span>Category: <span className="font-medium text-slate-600 dark:text-slate-300">{childRisk.category}</span></span>
-                                            </div>
-                                        </div>
-
-                                        {/* Col 3: People */}
-                                         <div className="space-y-1.5">
-                                            <div className="flex items-center gap-2">
-                                               <UserIcon size={14} className="text-slate-400" />
-                                               <span>Owner: <span className="font-medium text-slate-700 dark:text-slate-200">{childRisk.owner}</span></span>
-                                            </div>
-                                             {ownerUser && (
-                                                <div className="pl-6">
-                                                    <span className="px-1.5 py-0.5 bg-slate-100 dark:bg-slate-700 rounded text-[10px] uppercase font-bold tracking-wider text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-600">{ownerUser.role}</span>
-                                                </div>
-                                             )}
-                                        </div>
-                                    </div>
-                                 </div>
-                            </div>
-                         );
-                      })
+                      // Recursive Tree Rendering
+                      formData.childRiskIds.map(childId => (
+                        <HierarchyNode 
+                           key={childId}
+                           riskId={childId}
+                           allRisks={allRisks}
+                           users={users}
+                           depth={0} // Start at 0 for direct children
+                           onUnlink={handleUnlinkRisk}
+                           isAdmin={isAdmin}
+                        />
+                      ))
                    )}
                 </div>
              </div>
@@ -2276,6 +2369,37 @@ const RiskDetail: React.FC<Props> = ({
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Unlink Confirmation Modal */}
+      {riskToUnlink && (
+        <div className="absolute inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-fade-in">
+          <div className="bg-white dark:bg-slate-900 rounded-xl shadow-2xl p-6 max-w-sm w-full border-t-4 border-orange-500">
+             <div className="flex flex-col items-center text-center space-y-4">
+               <div className="p-3 bg-orange-100 dark:bg-orange-900/20 rounded-full">
+                 <MinusCircle size={32} className="text-orange-600 dark:text-orange-400" />
+               </div>
+               <h3 className="text-xl font-bold text-slate-800 dark:text-white">Unlink Risk?</h3>
+               <p className="text-sm text-slate-600 dark:text-slate-300">
+                 Are you sure you want to unlink the risk?
+               </p>
+               <div className="flex gap-3 w-full mt-2">
+                 <button 
+                   onClick={() => setRiskToUnlink(null)}
+                   className="flex-1 px-4 py-2 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 font-bold rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+                 >
+                   Cancel
+                 </button>
+                 <button 
+                   onClick={confirmUnlink}
+                   className="flex-1 px-4 py-2 bg-orange-600 text-white font-bold rounded-lg hover:bg-orange-700 transition-colors shadow-md"
+                 >
+                   Yes, Unlink
+                 </button>
+               </div>
+             </div>
           </div>
         </div>
       )}
