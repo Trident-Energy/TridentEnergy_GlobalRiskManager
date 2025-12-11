@@ -262,11 +262,11 @@ const USER_DATA_SOURCE = [
   { name: "Vijay Pathak", country: Country.UK, role: "TEML Functional", escalation: EscalationLevel.TEML_FUNCTIONAL_REVIEW },
   { name: "Paula Diaz", country: Country.UK, role: "TEML Functional", escalation: EscalationLevel.TEML_FUNCTIONAL_REVIEW },
   // Country Manager Escalation
-  { name: "Julien Vuillemot", country: Country.UK, role: "Country Manager", escalation: EscalationLevel.COUNTRY_MANAGER },
+  { name: "Julien Vuillemet", country: Country.GQ, role: "Country Manager", escalation: EscalationLevel.COUNTRY_MANAGER },
   { name: "Hugues Corrignan", country: Country.BR, role: "Country Manager", escalation: EscalationLevel.COUNTRY_MANAGER },
   { name: "Didier Mutti", country: Country.CG, role: "Country Manager", escalation: EscalationLevel.COUNTRY_MANAGER },
   // TEML Leadership / Corporate
-  { name: "Edwin Lopez", country: Country.GQ, role: "TEML Leadership Team", escalation: EscalationLevel.TEML_LEADERSHIP },
+  { name: "Edwin Lopez", country: Country.UK, role: "TEML Leadership Team", escalation: EscalationLevel.TEML_LEADERSHIP },
   { name: "Enrique Valero Torrenterra", country: Country.UK, role: "TEML Leadership Team", escalation: EscalationLevel.TEML_LEADERSHIP },
   { name: "Eric Descourtieux", country: Country.UK, role: "TEML Leadership Team", escalation: EscalationLevel.TEML_LEADERSHIP },
   { name: "Johanna Moreno / Ana Paula Alves", country: Country.UK, role: "TEML Leadership Team", escalation: EscalationLevel.TEML_LEADERSHIP },
@@ -275,7 +275,7 @@ const USER_DATA_SOURCE = [
   { name: "Paul Coward", country: Country.UK, role: "TEML Leadership Team", escalation: EscalationLevel.TEML_LEADERSHIP },
   { name: "Rogdy Espinoza", country: Country.UK, role: "TEML Leadership Team", escalation: EscalationLevel.TEML_LEADERSHIP },
   { name: "Jonathan Pim", country: Country.UK, role: "TEML Leadership Team", escalation: EscalationLevel.TEML_LEADERSHIP },
-  { name: "Jean-Michel Jacoulet", country: Country.UK, role: "CEO", escalation: EscalationLevel.CORPORATE_RISK },
+  { name: "Jean-Michel Jacoulot", country: Country.UK, role: "CEO", escalation: EscalationLevel.CORPORATE_RISK },
   { name: "Marissa Santiago", country: Country.UK, role: "RMIA", escalation: "RMIA (Admin)" }
 ];
 
